@@ -1,0 +1,23 @@
+{
+  "template": "https://github.com/scverse/cookiecutter-scverse",
+  "commit": "a2df556ee08d1848e4c5d95fbf1aead552d1c3bb",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "project_name": "spVIPES",
+      "package_name": "spVIPES",
+      "project_description": "Shared-private Variational Inference with Product of Experts and Supervision",
+      "author_full_name": "Claudio Novella Rausell",
+      "author_email": "c.novella_rausell@lumc.nl",
+      "github_user": "nrclaudio",
+      "project_repo": "https://github.com/nrclaudio/spVIPES",
+      "license": "BSD 3-Clause License",
+      "_copy_without_render": [
+        ".github/workflows/**.yaml",
+        "docs/_templates/autosummary/**.rst"
+      ],
+      "_template": "https://github.com/scverse/cookiecutter-scverse"
+    }
+  },
+  "directory": null
+}
