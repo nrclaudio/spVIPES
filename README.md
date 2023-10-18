@@ -17,10 +17,9 @@ Please refer to the [documentation][link-docs]. In particular, the
 
 ## Installation
 
-You need to have Python 3.9 or newer installed on your system. If you don't have
-Python installed, we recommend installing [Mambaforge](https://github.com/conda-forge/miniforge#mambaforge).
+You need to have Python 3.9 or newer installed on your system.
 
-There are several alternative options to install spVIPES:
+To install spVIPES:
 
 <!--
 1) Install the latest release of `spVIPES` from `PyPI <https://pypi.org/project/spVIPES/>`_:
@@ -42,7 +41,6 @@ See the [changelog][changelog].
 
 ## Contact
 
-For questions and help requests, you can reach out in the [scverse discourse][scverse-discourse].
 If you found a bug, please use the [issue tracker][issue-tracker].
 
 ## Citation
