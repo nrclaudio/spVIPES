@@ -21,7 +21,10 @@ urls.Home-page = "https://github.com/nrclaudio/spVIPES"
 dependencies = [
     "anndata",
     # for debug logging (referenced from the issue template)
-    "session-info"
+    "session-info",
+    "scvi-tools==0.20.0",
+    "torch",
+    "scanpy>=1.9.1"
 ]
 
 [project.optional-dependencies]
