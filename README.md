@@ -35,9 +35,15 @@ pip install spVIPES
 pip install git+https://github.com/nrclaudio/spVIPES.git@main
 ```
 
-## Release notes
+Sometimes your CUDA drivers might be too old for the latest release of PyTorch. Make sure your torch installation can see your CUDA device to take full advantage of GPU acceleration by running:
 
-See the [changelog][changelog].
+```python
+import torch
+
+torch.cuda.is_available()
+```
+
+This should return `True` if everything is fine. To solve the error with CUDA drivers being too old you can search for a compatible release here: https://pytorch.org/get-started/previous-versions/.
 
 ## Contact
 
