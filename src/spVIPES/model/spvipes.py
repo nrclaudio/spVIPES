@@ -29,60 +29,67 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         AnnData object that has been registered via :math:`~mypackage.MyModel.setup_anndata`.
     n_hidden
         Number of nodes per hidden layer.
-    n_topics
-        Number of topics to infer. Dimensionality of the latent space.
+    n_dimensions_shared
+        Dimensionality of the shared latent space.
+    n_dimensions_private
+        Dimensionalites of the private latent spaces.
     **model_kwargs
         Keyword args for :class:`~mypackage.MyModule`
 
     Examples
     --------
-    >>> adata = anndata.read_h5ad(path_to_anndata)
-    >>> mypackage.MyModel.setup_anndata(adata, batch_key="batch")
-    >>> vae = mypackage.MyModel(adata)
-    >>> vae.train()
-    >>> adata.obsm["X_mymodel"] = vae.get_latent_representation()
+    >>> adata = spVIPES.data.prepare_adatas({"dataset1": dataset1, "dataset2": dataset2})
+    >>> spVIPES.model.setup_anndata(adata, groups_key="groups", label_key="labels")
+    >>> spvipes = spVIPES.model.spVIPES(adata)
+    >>> group_indices_list = [np.where(adata.obs['groups'] == group)[0] for group in adata.obs['groups'].unique()]
+    >>> spvipes.train(group_indices_list)
+    >>> latents = spvipes.get_latent_representation(group_indices_list)
+
+    Notes
+    -----
+    We recommend n_dimensions_private < n_dimensions_shared
     """
 
     def __init__(
         self,
         adata: AnnData,
         n_hidden: int = 128,
-        n_topics_shared: int = 10,
-        n_topics_private: int = 10,
+        n_dimensions_shared: int = 25,
+        n_dimensions_private: int = 10,
         dropout_rate: float = 0.1,
         **model_kwargs,
     ):
         super().__init__(adata)
         self.adata = adata
-        self.n_topics_private = n_topics_private
-        self.n_topics_shared = n_topics_shared
+        self.n_dimensions_private = n_dimensions_private
+        self.n_dimensions_shared = n_dimensions_shared
 
         # self.summary_stats provides information about anndata dimensions and other tensor info
         n_batch = self.summary_stats.n_batch
 
-        species_lengths = adata.uns["species_lengths"]
-        species_obs_names = adata.uns["species_obs_names"]
-        species_var_names = adata.uns["species_var_names"]
-        species_obs_indices = adata.uns["species_obs_indices"]
-        species_var_indices = adata.uns["species_var_indices"]
+        groups_lengths = adata.uns["groups_lengths"]
+        groups_obs_names = adata.uns["groups_obs_names"]
+        groups_var_names = adata.uns["groups_var_names"]
+        groups_obs_indices = adata.uns["groups_obs_indices"]
+        groups_var_indices = adata.uns["groups_var_indices"]
 
         ## pass this information to the module
         self.module = spVIPESmodule(
-            species_lengths=species_lengths,
-            species_obs_names=species_obs_names,
-            species_var_names=species_var_names,
-            species_var_indices=species_var_indices,
-            species_obs_indices=species_obs_indices,
+            groups_lengths=groups_lengths,
+            groups_obs_names=groups_obs_names,
+            groups_var_names=groups_var_names,
+            groups_var_indices=groups_var_indices,
+            groups_obs_indices=groups_obs_indices,
             n_batch=n_batch,
             n_hidden=n_hidden,
-            n_topics_shared=n_topics_shared,
-            n_topics_private=n_topics_private,
+            n_dimensions_shared=n_dimensions_shared,
+            n_dimensions_private=n_dimensions_private,
             **model_kwargs,
         )
 
         self._model_summary_string = (
-            "spVIPES Model with the following params: \nn_hidden: {}, n_topics_shared: {}, n_topics_private: {}, dropout_rate: {}"
-        ).format(n_hidden, n_topics_shared, n_topics_private, dropout_rate)
+            "spVIPES Model with the following params: \nn_hidden: {}, n_dimensions_shared: {}, n_dimensions_private: {}, dropout_rate: {}"
+        ).format(n_hidden, n_dimensions_shared, n_dimensions_private, dropout_rate)
         # necessary line to get params that will be used for saving/loading
         self.init_params_ = self._get_init_params(locals())
 
@@ -93,7 +100,7 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
     def setup_anndata(
         cls,
         adata: AnnData,
-        species_key: str,
+        groups_key: str,
         labels_key: str,
         batch_key: Optional[str] = None,
         layer: Optional[str] = None,
@@ -117,7 +124,7 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
             LayerField(REGISTRY_KEYS.X_KEY, layer, is_count_data=True),
             CategoricalObsField(REGISTRY_KEYS.BATCH_KEY, batch_key),
             CategoricalObsField(
-                "species", species_key
+                "groups", groups_key
             ),  # CAN'T UPDATE REGISTRY KEYS WITH NEW COLUMN, AS IT IS A NAMED TUPLE DEFINED IN _constants.py
             CategoricalObsField("labels", labels_key),
         ]
@@ -138,10 +145,11 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
     ) -> np.ndarray:
         """
         Return the latent representation for each cell.
-        ######This is denoted as :math:`z_n` in our manuscripts.
 
         Parameters
         ----------
+        group_indices_list
+            List of lists containing the indices of cells in each of the groups used as input for spVIPES.
         adata
             AnnData object with equivalent structure to initial AnnData. If `None`, defaults to the
             AnnData object used to initialize the model.
@@ -162,7 +170,7 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         Low-dimensional topic for each cell.
         """
         adata = self._validate_anndata(adata)
-        n_species_1, n_species_2 = (len(group) for group in group_indices_list)
+        n_groups_1, n_groups_2 = (len(group) for group in group_indices_list)
         # group_indices_list = [l.tolist() for l in group_indices_list]
         scdl = ConcatDataLoader(
             self.adata_manager,
@@ -172,19 +180,19 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
             drop_last=False,
             batch_size=batch_size,
         )
-        species_1_latent_shared = []
-        species_2_latent_shared = []
-        species_1_latent = []
-        species_2_latent = []
+        groups_1_latent_shared = []
+        groups_2_latent_shared = []
+        groups_1_latent = []
+        groups_2_latent = []
         for tensors_by_group in scdl:
             inference_inputs = self.module._get_inference_input(tensors_by_group)
             outputs = self.module.inference(**inference_inputs)
-            _, _, _, poe_qz_species_1, poe_log_z_species_1, poe_theta_species_1 = outputs["poe_stats"][0].values()
-            _, _, _, poe_qz_species_2, poe_log_z_species_2, poe_theta_species_2 = outputs["poe_stats"][1].values()
+            _, _, _, poe_qz_groups_1, poe_log_z_groups_1, poe_theta_groups_1 = outputs["poe_stats"][0].values()
+            _, _, _, poe_qz_groups_2, poe_log_z_groups_2, poe_theta_groups_2 = outputs["poe_stats"][1].values()
 
             if not normalized:
-                species_1_latent_shared += [poe_log_z_species_1.cpu()]
-                species_2_latent_shared += [poe_log_z_species_2.cpu()]
+                groups_1_latent_shared += [poe_log_z_groups_1.cpu()]
+                groups_2_latent_shared += [poe_log_z_groups_2.cpu()]
             # else:
             #     if give_mean:
             #         samples = poe_qz.sample([mc_samples])
@@ -192,35 +200,35 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
             #         theta = theta.mean(dim=0)
             #     latent_shared += [theta.cpu()]
 
-            _, _, _, species_1_private_log_z, species_1_private_theta, species_1_private_qz = outputs["private_stats"][
+            _, _, _, groups_1_private_log_z, groups_1_private_theta, groups_1_private_qz = outputs["private_stats"][
                 0
             ].values()
-            _, _, _, species_2_private_log_z, species_2_private_theta, species_2_private_qz = outputs["private_stats"][
+            _, _, _, groups_2_private_log_z, groups_2_private_theta, groups_2_private_qz = outputs["private_stats"][
                 1
             ].values()
             if not normalized:
-                species_1_latent += [species_1_private_log_z.cpu()]
-                species_2_latent += [species_2_private_log_z.cpu()]
+                groups_1_latent += [groups_1_private_log_z.cpu()]
+                groups_2_latent += [groups_2_private_log_z.cpu()]
             else:
                 if give_mean:
-                    species_1_samples = species_1_private_qz.sample([mc_samples])
-                    species_2_samples = species_2_private_qz.sample([mc_samples])
-                    theta_species_1 = torch.nn.functional.softmax(species_1_samples, dim=-1)
-                    theta_species_1 = theta_species_1.mean(dim=0)
-                    theta_species_2 = torch.nn.functional.softmax(species_2_samples, dim=-1)
-                    theta_species_2 = theta_species_2.mean(dim=0)
-                species_1_latent += [theta_species_1.cpu()]
-                species_2_latent += [theta_species_2.cpu()]
-        species_1_latent = torch.cat(species_1_latent).numpy()
-        species_2_latent = torch.cat(species_2_latent).numpy()
-        species_1_latent_shared = torch.cat(species_1_latent_shared).numpy()
-        species_2_latent_shared = torch.cat(species_2_latent_shared).numpy()
+                    groups_1_samples = groups_1_private_qz.sample([mc_samples])
+                    groups_2_samples = groups_2_private_qz.sample([mc_samples])
+                    theta_groups_1 = torch.nn.functional.softmax(groups_1_samples, dim=-1)
+                    theta_groups_1 = theta_groups_1.mean(dim=0)
+                    theta_groups_2 = torch.nn.functional.softmax(groups_2_samples, dim=-1)
+                    theta_groups_2 = theta_groups_2.mean(dim=0)
+                groups_1_latent += [theta_groups_1.cpu()]
+                groups_2_latent += [theta_groups_2.cpu()]
+        groups_1_latent = torch.cat(groups_1_latent).numpy()
+        groups_2_latent = torch.cat(groups_2_latent).numpy()
+        groups_1_latent_shared = torch.cat(groups_1_latent_shared).numpy()
+        groups_2_latent_shared = torch.cat(groups_2_latent_shared).numpy()
 
-        latent_private = {0: species_1_latent[:n_species_1], 1: species_2_latent[:n_species_2]}
-        latent_shared = {0: species_1_latent_shared[:n_species_1], 1: species_2_latent_shared[:n_species_2]}
+        latent_private = {0: groups_1_latent[:n_groups_1], 1: groups_2_latent[:n_groups_2]}
+        latent_shared = {0: groups_1_latent_shared[:n_groups_1], 1: groups_2_latent_shared[:n_groups_2]}
 
         return {"shared": latent_shared, "private": latent_private}
-        # return {'species_1': latent[0], 'species_2': latent[1]}
+        # return {'groups_1': latent[0], 'groups_2': latent[1]}
 
     def get_loadings(self) -> dict:
         """Extract per-gene weights in the linear decoder.
@@ -229,15 +237,15 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
 
         """
         num_datasets = len(self.module.input_dims)
-        datasets_obs_indices = self.module.species_obs_indices
-        datasets_var_indices = self.module.species_var_indices
+        datasets_obs_indices = self.module.groups_obs_indices
+        datasets_var_indices = self.module.groups_var_indices
         adata = self.adata
         loadings_dict = {}
         for i in range(num_datasets):
             dataset_obs_indices = datasets_obs_indices[i]
             s_adata = adata[dataset_obs_indices, :].copy()
-            cols_private = [f"Z_private_{n}" for n in range(self.module.n_topics_private)]
-            cols_shared = [f"Z_shared_{n}" for n in range(self.module.n_topics_shared)]
+            cols_private = [f"Z_private_{n}" for n in range(self.module.n_dimensions_private)]
+            cols_shared = [f"Z_shared_{n}" for n in range(self.module.n_dimensions_shared)]
             var_names = s_adata[:, datasets_var_indices[i]].var_names
             loadings_private = pd.DataFrame(
                 self.module.get_loadings(i, "private"), index=var_names, columns=cols_private

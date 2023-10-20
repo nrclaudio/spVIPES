@@ -12,44 +12,41 @@ def prepare_adatas(
     :param adatas:
         Dict of AnnData objects
     """
-    # TOOD: add checks for layers
-
-    # needed for scArches operation setup
-    species_obs_names = []
-    species_obs = {}
-    species_lengths = {}
-    species_var_names = []  # we store for filtering out other species' var_names later
-    species_mapping = {}
+    groups_obs_names = []
+    groups_obs = {}
+    groups_lengths = {}
+    groups_var_names = []  # we store for filtering out other groups' var_names later
+    groups_mapping = {}
     if len(adatas) != 2:
-        raise ValueError("Currently only 2 species are supported")
+        raise ValueError("Currently only 2 groups are supported")
 
-    for i, (species, adata) in enumerate(adatas.items()):
+    for i, (groups, adata) in enumerate(adatas.items()):
         if adata is not None:
-            species_lengths[i] = adata.shape[1]
-            species_obs_names.append(adata.obs_names)
-            if species_obs.get(species, None) is None:
-                species_obs[species] = adata.obs
-                species_obs[species].loc[:, "group"] = species
+            groups_lengths[i] = adata.shape[1]
+            groups_obs_names.append(adata.obs_names)
+            if groups_obs.get(groups, None) is None:
+                groups_obs[groups] = adata.obs
+                groups_obs[groups].loc[:, "group"] = groups
             else:
-                cols_to_use = adata.obs.columns.difference(species_obs[species].columns)
-                species_obs[species] = species_obs[species].join(adata.obs[cols_to_use])
+                cols_to_use = adata.obs.columns.difference(groups_obs[groups].columns)
+                groups_obs[groups] = groups_obs[groups].join(adata.obs[cols_to_use])
 
-            species_var_names.append(adata.var_names)
-            adata.obs["species"] = species
-            adata.var_names = f"{species}_" + adata.var_names
-            species_mapping[i] = species
+            groups_var_names.append(adata.var_names)
+            adata.obs["groups"] = groups
+            adata.var_names = f"{groups}_" + adata.var_names
+            groups_mapping[i] = groups
 
-    multispecies_adata = ad.concat(adatas, join="outer", label="species", index_unique="-")
-    multispecies_adata.uns["species_var_indices"] = [
-        np.where(multispecies_adata.var_names.str.startswith(k))[0] for k in adatas.keys()
+    multigroups_adata = ad.concat(adatas, join="outer", label="groups", index_unique="-")
+    multigroups_adata.uns["groups_var_indices"] = [
+        np.where(multigroups_adata.var_names.str.startswith(k))[0] for k in adatas.keys()
     ]
-    multispecies_adata.uns["species_obs_indices"] = [
-        np.where(multispecies_adata.obs["species"].str.startswith(k))[0] for k in adatas.keys()
+    multigroups_adata.uns["groups_obs_indices"] = [
+        np.where(multigroups_adata.obs["groups"].str.startswith(k))[0] for k in adatas.keys()
     ]
-    multispecies_adata.uns["species_obs_names"] = species_obs_names
-    multispecies_adata.uns["species_obs"] = species_obs
-    multispecies_adata.uns["species_lengths"] = species_lengths
-    multispecies_adata.uns["species_var_names"] = species_var_names
-    multispecies_adata.uns["species_mapping"] = species_mapping
+    multigroups_adata.uns["groups_obs_names"] = groups_obs_names
+    multigroups_adata.uns["groups_obs"] = groups_obs
+    multigroups_adata.uns["groups_lengths"] = groups_lengths
+    multigroups_adata.uns["groups_var_names"] = groups_var_names
+    multigroups_adata.uns["groups_mapping"] = groups_mapping
 
-    return multispecies_adata
+    return multigroups_adata

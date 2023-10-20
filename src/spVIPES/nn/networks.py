@@ -21,12 +21,12 @@ class Encoder(nn.Module):
         hidden: int = 100,
         dropout: float = 0.1,
         n_cat_list: Iterable[int] = None,
-        species: str = None,
+        groups: str = None,
     ):
         super().__init__()
         self.n_topics_shared = n_topics_shared
         self.n_topics_private = n_topics_private
-        self.species = species
+        self.groups = groups
 
         if n_cat_list is not None:
             # n_cat = 1 will be ignored

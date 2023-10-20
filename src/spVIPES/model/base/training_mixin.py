@@ -58,8 +58,8 @@ class MultiGroupTrainingMixin:
         """
         # if batch_sizes is None:
         #     n_cells_per_group = [len(group) for group in group_indices_list]
-        #     biggest_species = n_cells_per_group.index(max(n_cells_per_group)) #get index, species0 or species1
-        #     n_iters = n_cells_per_group[biggest_species] / 128 #default to 128 batch size for biggest species
+        #     biggest_groups = n_cells_per_group.index(max(n_cells_per_group)) #get index, groups0 or groups1
+        #     n_iters = n_cells_per_group[biggest_groups] / 128 #default to 128 batch size for biggest groups
         #     batch_sizes = [math.floor(i/n_iters) for i in n_cells_per_group]
         if max_epochs is None:
             n_cells = self.adata.n_obs
