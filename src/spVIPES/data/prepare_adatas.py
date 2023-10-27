@@ -25,12 +25,12 @@ def prepare_adatas(
             groups_lengths[i] = adata.shape[1]
             groups_obs_names.append(adata.obs_names)
             if groups_obs.get(groups, None) is None:
-                groups_obs[groups] = adata.obs
+                groups_obs[groups] = adata.obs.copy()
                 groups_obs[groups].loc[:, "group"] = groups
+
             else:
                 cols_to_use = adata.obs.columns.difference(groups_obs[groups].columns)
                 groups_obs[groups] = groups_obs[groups].join(adata.obs[cols_to_use])
-
             groups_var_names.append(adata.var_names)
             adata.obs["groups"] = groups
             adata.var_names = f"{groups}_" + adata.var_names

@@ -19,6 +19,32 @@ Please refer to the [documentation][link-docs]. In particular, the
 
 You need to have Python 3.9 or newer installed on your system.
 
+### PyTorch installation
+
+We strongly recommend using spVIPES with GPU acceleration. In Linux, check your NVIDIA drivers running:
+
+```bash
+nvidia-smi
+```
+
+You can then install a compatible PyTorch version from https://pytorch.org/get-started/previous-versions/. For example if your CUDA drivers are version 11.3, you should install PyTorch v1.12.1 with the following command:
+
+```bash
+pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 torchaudio==0.12.1 --extra-index-url https://download.pytorch.org/whl/cu113
+```
+
+Make sure your torch installation can see your CUDA device to take full advantage of GPU acceleration by running:
+
+```python
+import torch
+
+torch.cuda.is_available()
+```
+
+This should return `True` if everything is fine.
+
+### spVIPES installation
+
 To install spVIPES:
 
 <!--
@@ -34,16 +60,6 @@ pip install spVIPES
 ```bash
 pip install git+https://github.com/nrclaudio/spVIPES.git@main
 ```
-
-Sometimes your CUDA drivers might be too old for the latest release of PyTorch. Make sure your torch installation can see your CUDA device to take full advantage of GPU acceleration by running:
-
-```python
-import torch
-
-torch.cuda.is_available()
-```
-
-This should return `True` if everything is fine. To solve the error with CUDA drivers being too old you can search for a compatible release here: https://pytorch.org/get-started/previous-versions/.
 
 ## Contact
 

@@ -24,7 +24,8 @@ dependencies = [
     "session-info",
     "scvi-tools==0.20.0",
     "torch",
-    "scanpy>=1.9.1"
+    "scanpy>=1.9.1",
+    "pandas<2.0.0",
 ]
 
 [project.optional-dependencies]
