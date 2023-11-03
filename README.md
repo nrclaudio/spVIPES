@@ -1,11 +1,13 @@
 # spVIPES
 
 [![Tests][badge-tests]][link-tests]
-[![Documentation][badge-docs]][link-docs]
+
+<!-- [![Documentation][badge-docs]][link-docs] -->
 
 [badge-tests]: https://img.shields.io/github/actions/workflow/status/nrclaudio/spVIPES/test.yaml?branch=main
 [link-tests]: https://github.com/nrclaudio/spVIPES/actions/workflows/test.yml
-[badge-docs]: https://img.shields.io/readthedocs/spVIPES
+
+<!-- [badge-docs]: https://img.shields.io/readthedocs/spVIPES -->
 
 Shared-private Variational Inference with Product of Experts and Supervision
 
@@ -41,21 +43,19 @@ import torch
 torch.cuda.is_available()
 ```
 
-This should return `True` if everything is fine.
+This should return `True` if everything is installed correctly.
 
 ### spVIPES installation
 
 To install spVIPES:
 
-<!--
-1) Install the latest release of `spVIPES` from `PyPI <https://pypi.org/project/spVIPES/>`_:
+1. Install the latest release of `spVIPES` from `PyPI <https://pypi.org/project/spVIPES/>`\_:
 
 ```bash
 pip install spVIPES
 ```
--->
 
-1. Install the latest development version:
+2. Install the latest development version:
 
 ```bash
 pip install git+https://github.com/nrclaudio/spVIPES.git@main
