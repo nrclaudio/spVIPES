@@ -61,6 +61,10 @@ pip install spVIPES
 pip install git+https://github.com/nrclaudio/spVIPES.git@main
 ```
 
+## Tutorials
+
+To get started, please refer to the [basic spVIPES tutorial](docs/notebooks/Tutorial.ipynb).
+
 ## Contact
 
 If you found a bug, please use the [issue tracker][issue-tracker].
