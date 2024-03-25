@@ -4,7 +4,6 @@ For more details on Mixin classes, see
 https://docs.scvi-tools.org/en/0.9.0/user_guide/notebooks/model_user_guide.html#Mixing-in-pre-coded-features
 """
 
-
 from typing import List, Optional, Union
 
 import numpy as np

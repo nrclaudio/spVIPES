@@ -88,8 +88,8 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         )
 
         self._model_summary_string = (
-            "spVIPES Model with the following params: \nn_hidden: {}, n_dimensions_shared: {}, n_dimensions_private: {}, dropout_rate: {}"
-        ).format(n_hidden, n_dimensions_shared, n_dimensions_private, dropout_rate)
+            f"spVIPES Model with the following params: \nn_hidden: {n_hidden}, n_dimensions_shared: {n_dimensions_shared}, n_dimensions_private: {n_dimensions_private}, dropout_rate: {dropout_rate}"
+        )
         # necessary line to get params that will be used for saving/loading
         self.init_params_ = self._get_init_params(locals())
 
