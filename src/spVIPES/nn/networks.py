@@ -16,16 +16,14 @@ class Encoder(nn.Module):
     def __init__(
         self,
         n_input: int,  # n_in
-        n_topics_shared: int,  # n_out
-        n_topics_private: int,
+        n_topics: int,  # n_out
         hidden: int = 100,
         dropout: float = 0.1,
         n_cat_list: Iterable[int] = None,
         groups: str = None,
     ):
         super().__init__()
-        self.n_topics_shared = n_topics_shared
-        self.n_topics_private = n_topics_private
+        self.n_topics = n_topics
         self.groups = groups
 
         if n_cat_list is not None:
@@ -43,14 +41,14 @@ class Encoder(nn.Module):
 
         # hidden 128 -> topics
         self.mu_encoder = nn.Sequential(
-            nn.Linear(hidden, n_topics_shared + n_topics_private, bias=True),
-            nn.BatchNorm1d(n_topics_shared + n_topics_private),
+            nn.Linear(hidden, n_topics, bias=True),
+            nn.BatchNorm1d(n_topics),
         )
 
         # hidden 128 -> topics
         self.lvar_encoder = nn.Sequential(
-            nn.Linear(hidden, n_topics_shared + n_topics_private, bias=True),
-            nn.BatchNorm1d(n_topics_shared + n_topics_private),
+            nn.Linear(hidden, n_topics, bias=True),
+            nn.BatchNorm1d(n_topics),
         )
 
     def forward(self, data: torch.Tensor, specie: int, *cat_list: int):
@@ -69,55 +67,23 @@ class Encoder(nn.Module):
         data = self.drop(data)
 
         logtheta_loc = self.mu_encoder(data)
-        logtheta_loc_shared = logtheta_loc[:, : self.n_topics_shared]
-        logtheta_loc_private = logtheta_loc[:, self.n_topics_shared : self.n_topics_private + self.n_topics_shared]
         logtheta_logvar = self.lvar_encoder(data)
-        logtheta_logvar_shared = logtheta_logvar[:, : self.n_topics_shared]
-        logtheta_logvar_private = logtheta_logvar[
-            :, self.n_topics_shared : self.n_topics_private + self.n_topics_shared
-        ]
-        logtheta_scale_shared = (0.5 * logtheta_logvar_shared).exp()  # Enforces positivity
-        logtheta_scale_private = (0.5 * logtheta_logvar_private).exp()  # Enforces positivity
         logtheta_scale = (0.5 * logtheta_logvar).exp()
 
-        qz_private = Normal(logtheta_loc_private, logtheta_scale_private)
-        qz_shared = Normal(logtheta_loc_shared, logtheta_scale_shared)
-        qz_private_shared = Normal(logtheta_loc, logtheta_scale)
+        qz = Normal(logtheta_loc, logtheta_scale)
+        log_z = qz.rsample().to(data.device)
+        theta = F.softmax(log_z, -1)
 
-        log_z_shared = qz_shared.rsample().to(data.device)
-        log_z_private = qz_private.rsample().to(data.device)
-        log_z_private_shared = qz_private_shared.rsample().to(data.device)
-        # we sample from normal but by applying softmax we go from logz to z. We are originally sampling the logarithm of the random variable, so we transform it here
-        theta_shared = F.softmax(log_z_shared, -1)
-        theta_private = F.softmax(log_z_private, -1)
-        theta_private_shared = F.softmax(log_z_private_shared, -1)
-
-        private_stats = {
-            "logtheta_loc": logtheta_loc_private,
-            "logtheta_logvar": logtheta_logvar_private,
-            "logtheta_scale": logtheta_scale_private,
-            "log_z": log_z_private,
-            "theta": theta_private,
-            "qz": qz_private,
-        }
-        shared_stats = {
-            "logtheta_loc": logtheta_loc_shared,
-            "logtheta_logvar": logtheta_logvar_shared,
-            "logtheta_scale": logtheta_scale_shared,
-            "log_z": log_z_shared,
-            "theta": theta_shared,
-            "qz": qz_shared,
-        }
-
-        private_shared_stats = {
+        stats = {
             "logtheta_loc": logtheta_loc,
             "logtheta_logvar": logtheta_logvar,
             "logtheta_scale": logtheta_scale,
-            "log_z": log_z_private_shared,
-            "theta": theta_private_shared,
-            "qz": qz_private_shared,
+            "log_z": log_z,
+            "theta": theta,
+            "qz": qz,
         }
-        return {"private": private_stats, "shared": shared_stats, "ps": private_shared_stats}
+
+        return stats
 
 
 class LinearDecoderSPVIPE(nn.Module):

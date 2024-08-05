@@ -107,36 +107,46 @@ class spVIPESmodule(BaseModuleClass):
         # cat_list includes both batch ids and cat_covs
         cat_list = [n_batch] if n_batch > 0 else None
         self.encoders = {
-            groups: Encoder(
+            groups: {
+            "shared": Encoder(
                 x_dim,
                 n_dimensions_shared,
+                hidden=n_hidden,
+                dropout=dropout_rate,
+                n_cat_list=cat_list,
+                groups=groups,
+            ),
+            "private": Encoder(
+                x_dim,
                 n_dimensions_private,
                 hidden=n_hidden,
                 dropout=dropout_rate,
                 n_cat_list=cat_list,
                 groups=groups,
-            )
+            ),
+            }
             for groups, x_dim in self.input_dims.items()
         }
 
         # n_input_decoder = n_dimensions_shared + n_dimensions_private
         self.decoders = {
             groups: LinearDecoderSPVIPE(
-                n_dimensions_private,
-                n_dimensions_shared,
-                x_dim,
-                # hidden=n_hidden,
-                n_cat_list=cat_list,
-                use_batch_norm=True,
-                use_layer_norm=False,
-                bias=False,
+            n_dimensions_private,
+            n_dimensions_shared,
+            x_dim,
+            # hidden=n_hidden,
+            n_cat_list=cat_list,
+            use_batch_norm=True,
+            use_layer_norm=False,
+            bias=False,
             )
             for groups, x_dim in self.input_dims.items()
         }
 
         # register sub-modules
         for (groups, values_encoder), (_, values_decoder) in zip(self.encoders.items(), self.decoders.items()):
-            self.add_module(f"encoder_{groups}", values_encoder)
+            self.add_module(f"encoder_{groups}_shared", values_encoder["shared"])
+            self.add_module(f"encoder_{groups}_private", values_encoder["private"])
             self.add_module(f"decoder_{groups}", values_decoder)
 
     def _supervised_poe(self, shared_stats: dict, label_group: dict):
@@ -425,7 +435,6 @@ class spVIPESmodule(BaseModuleClass):
     def _get_generative_input(self, tensors_by_group, inference_outputs):
         private_stats = inference_outputs["private_stats"]
         shared_stats = inference_outputs["shared_stats"]
-        private_shared_stats = inference_outputs["private_shared_stats"]
         poe_stats = inference_outputs["poe_stats"]
         library = inference_outputs["library"]
         groups = [group["groups"] for group in tensors_by_group]
@@ -434,7 +443,6 @@ class spVIPESmodule(BaseModuleClass):
         input_dict = {
             "private_stats": private_stats,
             "shared_stats": shared_stats,
-            "private_shared_stats": private_shared_stats,
             "poe_stats": poe_stats,
             "library": library,
             "groups": groups,
@@ -445,44 +453,42 @@ class spVIPESmodule(BaseModuleClass):
     @auto_move_data
     def inference(self, x, batch_index, groups, labels):
         """Runs the encoder model."""
-        # encoder_input = x
-        # [int(np.unique(group.cpu()).item()) for group in groups]
         x = {
             i: xs[:, self.groups_var_indices[i]] for i, xs in x.items()
         }  # update each groups minibatch with its own gene indices
+        
         if self.log_variational_inference:
             x = {i: torch.log(1 + xs) for i, xs in x.items()}  # logvariational
+        
         label_group = dict(enumerate(labels))
         library = {i: torch.log(xs.sum(1)).unsqueeze(1) for i, xs in x.items()}  # observed library size
-
-        stats = {}
-        for (group, item), batch in zip(x.items(), batch_index):
-            encoder = self.encoders[group]
-            values = encoder(item, group, batch)
-            stats[group] = values
+        
         private_stats = {}
         shared_stats = {}
-        private_shared_stats = {}
-
-        for key, value in stats.items():
-            private_stats[key] = value["private"]
-            shared_stats[key] = value["shared"]
-            private_shared_stats[key] = value["ps"]
-
+        
+        for (group, item), batch in zip(x.items(), batch_index):
+            private_encoder = self.encoders[group]["private"]
+            shared_encoder = self.encoders[group]["shared"]
+            
+            private_values = private_encoder(item, group, batch)
+            shared_values = shared_encoder(item, group, batch)
+            
+            private_stats[group] = private_values
+            shared_stats[group] = shared_values
+        
         poe_stats = self._supervised_poe(shared_stats, label_group)
-
+        
         outputs = {
             "private_stats": private_stats,
             "shared_stats": shared_stats,
             "poe_stats": poe_stats,
-            "private_shared_stats": private_shared_stats,
             "library": library,
         }
-
+        
         return outputs
 
     @auto_move_data
-    def generative(self, private_stats, shared_stats, private_shared_stats, poe_stats, library, groups, batch_index):
+    def generative(self, private_stats, shared_stats, poe_stats, library, groups, batch_index):
         """Runs the generative model."""
         if (len(private_stats.items()) > 2) or (len(shared_stats.items()) > 2):
             raise ValueError(
