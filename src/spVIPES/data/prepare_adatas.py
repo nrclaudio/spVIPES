@@ -48,5 +48,12 @@ def prepare_adatas(
     multigroups_adata.uns["groups_lengths"] = groups_lengths
     multigroups_adata.uns["groups_var_names"] = groups_var_names
     multigroups_adata.uns["groups_mapping"] = groups_mapping
+    
+    # Create indices column
+    indices = []
+    for group, group_indices in zip(adatas.keys(), multigroups_adata.uns["groups_obs_indices"]):
+        group_size = len(group_indices)
+        indices.extend(np.arange(group_size, dtype=np.int32))
+    multigroups_adata.obs["indices"] = indices
 
     return multigroups_adata

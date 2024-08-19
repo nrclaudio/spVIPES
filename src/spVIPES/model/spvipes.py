@@ -64,7 +64,6 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         self.n_dimensions_private = n_dimensions_private
         self.n_dimensions_shared = n_dimensions_shared
 
-        # self.summary_stats provides information about anndata dimensions and other tensor info
         n_batch = self.summary_stats.n_batch
 
         groups_lengths = adata.uns["groups_lengths"]
@@ -73,24 +72,33 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         groups_obs_indices = adata.uns["groups_obs_indices"]
         groups_var_indices = adata.uns["groups_var_indices"]
 
-        ## pass this information to the module
+        transport_plan = adata.uns.get("transport_plan")
+        if transport_plan is not None:
+            transport_plan = torch.tensor(transport_plan, dtype=torch.float32)
+
+        use_labels = "labels" in self.adata_manager.data_registry
+        n_labels = self.summary_stats.n_labels if use_labels else None
+
         self.module = spVIPESmodule(
             groups_lengths=groups_lengths,
             groups_obs_names=groups_obs_names,
             groups_var_names=groups_var_names,
             groups_var_indices=groups_var_indices,
             groups_obs_indices=groups_obs_indices,
+            transport_plan=transport_plan,
+            use_labels=use_labels,
+            n_labels=n_labels,
             n_batch=n_batch,
             n_hidden=n_hidden,
             n_dimensions_shared=n_dimensions_shared,
             n_dimensions_private=n_dimensions_private,
+            dropout_rate=dropout_rate,
             **model_kwargs,
         )
 
         self._model_summary_string = (
-            "spVIPES Model with the following params: \nn_hidden: {}, n_dimensions_shared: {}, n_dimensions_private: {}, dropout_rate: {}"
-        ).format(n_hidden, n_dimensions_shared, n_dimensions_private, dropout_rate)
-        # necessary line to get params that will be used for saving/loading
+            "spVIPES Model with the following params: \nn_hidden: {}, n_dimensions_shared: {}, n_dimensions_private: {}, dropout_rate: {}, transport_plan: {}"
+        ).format(n_hidden, n_dimensions_shared, n_dimensions_private, dropout_rate, "Provided" if transport_plan is not None else "Not provided")
         self.init_params_ = self._get_init_params(locals())
 
         logger.info("The model has been initialized")
@@ -101,7 +109,8 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         cls,
         adata: AnnData,
         groups_key: str,
-        labels_key: str,
+        labels_key: Optional[str] = None,
+        transport_plan_key: Optional[str] = None,
         batch_key: Optional[str] = None,
         layer: Optional[str] = None,
         **kwargs,
@@ -112,6 +121,12 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         Parameters
         ----------
         %(param_adata)s
+        groups_key
+            Key for grouping of cells in `adata.obs`.
+        labels_key
+            Key for cell type labels in `adata.obs`. Required if transport_plan_key is not provided.
+        transport_plan_key
+            Key for transport plan in `adata.uns`. If provided, it will be used instead of labels.
         %(param_batch_key)s
         %(param_layer)s
 
@@ -123,11 +138,23 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         anndata_fields = [
             LayerField(REGISTRY_KEYS.X_KEY, layer, is_count_data=True),
             CategoricalObsField(REGISTRY_KEYS.BATCH_KEY, batch_key),
-            CategoricalObsField(
-                "groups", groups_key
-            ),  # CAN'T UPDATE REGISTRY KEYS WITH NEW COLUMN, AS IT IS A NAMED TUPLE DEFINED IN _constants.py
-            CategoricalObsField("labels", labels_key),
+            CategoricalObsField("groups", groups_key),
+            CategoricalObsField("indices", "indices"),  # Always include indices
         ]
+        
+        if transport_plan_key is not None:
+            if transport_plan_key not in adata.uns:
+                raise ValueError(f"Transport plan key '{transport_plan_key}' not found in adata.uns")
+            
+            # Ensure that 'indices' exists in adata.obs
+            if "indices" not in adata.obs:
+                raise ValueError("'indices' must be present in adata.obs when using a transport plan")
+            adata.uns["transport_plan"] = adata.uns[transport_plan_key]
+        elif labels_key is not None:
+            anndata_fields.append(CategoricalObsField("labels", labels_key))
+        else:
+            raise ValueError("Either transport_plan_key or labels_key must be provided")
+
         adata_manager = AnnDataManager(fields=anndata_fields, setup_method_args=setup_method_args)
         adata_manager.register_fields(adata, **kwargs)
         cls.register_manager(adata_manager)

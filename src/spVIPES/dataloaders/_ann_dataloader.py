@@ -20,6 +20,8 @@ class AnnDataLoader(DataLoader):
         :class:`~scvi.data.AnnDataManager` object with a registered AnnData object.
     shuffle
         Whether the data should be shuffled
+    use_labels
+        Whether to use labels for weighted sampling
     indices
         The indices of the observations in the adata to load
     batch_size
@@ -43,7 +45,7 @@ class AnnDataLoader(DataLoader):
         self,
         adata_manager: AnnDataManager,
         shuffle: bool = False,
-        weighted: bool = True,
+        use_labels: bool = False,
         indices: Union[Sequence[int], Sequence[bool]] = None,
         batch_size: int = 128,
         sampler: Optional[Sampler] = None,
@@ -59,48 +61,41 @@ class AnnDataLoader(DataLoader):
                 indices = np.where(indices)[0].ravel()
             indices = np.asarray(indices)
         self.indices = indices
+
+        # Modify the dataset to include the indices
         self.dataset = adata_manager.create_torch_dataset(indices=indices, data_and_attributes=data_and_attributes)
         self.data_loader_kwargs = copy.deepcopy(data_loader_kwargs)
-        labels, counts = np.unique(self.dataset[:]["labels"], return_counts=True)
+        self.dataset.indices = indices  # Keep track of the indices
 
-        # Compute the weights based on the counts, proportional to counts
-        np.sum(counts)
-        weights = [1] * len(labels)
-
-        # Create a dictionary to store the labels and counts
-        class_weights_dict = dict(zip(labels, weights))
-        sample_weights = [class_weights_dict[i] for i in self.dataset[:]["labels"].flatten()]
         if sampler is None:
-            sampler_cls = (
-                SequentialSampler
-                if not shuffle and not weighted
-                else WeightedRandomSampler
-                if shuffle and weighted
-                else RandomSampler
-                if shuffle and not weighted
-                else None
-            )
-            if sampler_cls != WeightedRandomSampler:
+            if use_labels and "labels" in self.dataset[0]:
+                labels = self.dataset[:]["labels"]
+                _, counts = np.unique(labels, return_counts=True)
+                weights = 1.0 / counts
+                sample_weights = weights[labels]
                 sampler = BatchSampler(
-                    sampler=sampler_cls(self.dataset),
+                    sampler=WeightedRandomSampler(
+                        weights=sample_weights,
+                        num_samples=len(sample_weights),
+                        replacement=True,
+                    ),
                     batch_size=batch_size,
                     drop_last=drop_last,
                 )
             else:
                 sampler = BatchSampler(
-                    sampler=sampler_cls(num_samples=len(self.dataset), weights=sample_weights),
+                    sampler=RandomSampler(self.dataset) if shuffle else SequentialSampler(self.dataset),
                     batch_size=batch_size,
                     drop_last=drop_last,
                 )
-            # do not touch batch size here, sampler gives batched indices
-            # This disables PyTorch automatic batching, which is necessary
-            # for fast access to sparse matrices
+
             self.data_loader_kwargs.update({"sampler": sampler, "batch_size": None})
 
         if iter_ndarray:
             self.data_loader_kwargs.update({"collate_fn": _dummy_collate})
 
         super().__init__(self.dataset, **self.data_loader_kwargs)
+
 
 
 def _dummy_collate(b: dict[str, np.ndarray]) -> dict[str, np.ndarray]:

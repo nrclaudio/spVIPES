@@ -2,13 +2,10 @@ from itertools import cycle
 from typing import Optional, Union
 
 import numpy as np
-
-# from scvi.dataloaders._ann_dataloader import AnnDataLoader
+import torch
 from torch.utils.data import DataLoader
 
 from spVIPES.data import AnnDataManager
-
-# from spVIPES.dataloaders._class_dataloader import ClassDataLoader
 from spVIPES.dataloaders._ann_dataloader import AnnDataLoader
 
 
@@ -23,6 +20,8 @@ class ConcatDataLoader(DataLoader):
         List where each element is a list of indices in the adata to load
     shuffle
         Whether the data should be shuffled
+    use_labels
+        Whether to use labels for sampling
     batch_size
         minibatch size to load each iteration
     data_and_attributes
@@ -38,16 +37,16 @@ class ConcatDataLoader(DataLoader):
         adata_manager: AnnDataManager,
         indices_list: list[list[int]],
         shuffle: bool = True,
-        weighted: bool = True,
+        use_labels: bool = False,
         batch_size: int = 128,
         data_and_attributes: Optional[dict] = None,
         drop_last: Union[bool, int] = False,
         **data_loader_kwargs,
     ):
         self.adata_manager = adata_manager
+        self.groups_obs_indices = adata_manager.adata.uns['groups_obs_indices']
         self.dataloader_kwargs = data_loader_kwargs
         self.data_and_attributes = data_and_attributes
-        # self._single_label = single_label
         self._batch_size = batch_size
         self._drop_last = drop_last
         self._shuffle = shuffle
@@ -55,33 +54,18 @@ class ConcatDataLoader(DataLoader):
         self.dataloaders = []
         largest_species = max([len(indices) for indices in indices_list])
         for indices in indices_list:
-            if len(indices) == largest_species:
-                self.dataloaders.append(
-                    AnnDataLoader(
-                        adata_manager,
-                        indices=indices,
-                        shuffle=shuffle,
-                        weighted=weighted,
-                        batch_size=batch_size,
-                        data_and_attributes=data_and_attributes,
-                        drop_last=drop_last,
-                        **self.dataloader_kwargs,
-                    )
+            self.dataloaders.append(
+                AnnDataLoader(
+                    adata_manager,
+                    indices=indices,
+                    shuffle=shuffle,
+                    use_labels=use_labels,
+                    batch_size=batch_size,
+                    data_and_attributes=data_and_attributes,
+                    drop_last=drop_last,
+                    **self.dataloader_kwargs,
                 )
-            else:
-                self.dataloaders.append(
-                    AnnDataLoader(
-                        adata_manager,
-                        indices=indices,
-                        shuffle=shuffle,
-                        weighted=weighted,
-                        batch_size=batch_size,
-                        # batch_size=math.ceil(batch_size / (largest_species / len(indices))),
-                        data_and_attributes=data_and_attributes,
-                        drop_last=drop_last,
-                        **self.dataloader_kwargs,
-                    )
-                )
+            )
         lens = [len(dl) for dl in self.dataloaders]
         self.largest_dl = self.dataloaders[np.argmax(lens)]
         super().__init__(self.largest_dl, **data_loader_kwargs)
@@ -90,11 +74,5 @@ class ConcatDataLoader(DataLoader):
         return len(self.largest_dl)
 
     def __iter__(self):
-        """Iter method for concat data loader.
-
-        Will iter over the dataloader with the most data while cycling through
-        the data in the other dataloaders. The order of data in returned iter_list
-        is the same as indices_list.
-        """
         iter_list = [cycle(dl) if dl != self.largest_dl else dl for dl in self.dataloaders]
         return zip(*iter_list)
