@@ -68,7 +68,7 @@ class AnnDataLoader(DataLoader):
         self.dataset.indices = indices  # Keep track of the indices
 
         if sampler is None:
-            if use_labels and "labels" in self.dataset[0]:
+            if use_labels and "labels" in self.dataset[:]:
                 labels = self.dataset[:]["labels"]
                 _, counts = np.unique(labels, return_counts=True)
                 weights = 1.0 / counts

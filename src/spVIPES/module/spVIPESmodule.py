@@ -1,5 +1,5 @@
 """Main module."""
-from typing import Literal, Optional, List
+from typing import Literal, Optional, List, Dict
 
 import numpy as np
 import torch
@@ -158,7 +158,7 @@ class spVIPESmodule(BaseModuleClass):
         self.use_labels = use_labels
         self.n_labels = n_labels
 
-    def _weighted_poe(self, shared_stats: dict, transport_plan: dict):
+    def _cluster_based_poe(self, shared_stats: dict, batch_transport_plans: Dict[int, torch.Tensor], processed_labels: List[torch.Tensor]):
         groups_1_stats, groups_2_stats = shared_stats.values()
         groups_1_stats = {
             k: groups_1_stats[k] for k in ["logtheta_loc", "logtheta_logvar", "logtheta_scale"] if k in groups_1_stats
@@ -167,202 +167,88 @@ class spVIPESmodule(BaseModuleClass):
             k: groups_2_stats[k] for k in ["logtheta_loc", "logtheta_logvar", "logtheta_scale"] if k in groups_2_stats
         }
 
-        # Get the batched transport plans
-        transport_plan_1 = transport_plan[0]
-        transport_plan_2 = transport_plan[1]
+        # The processed_labels are already batched, so we can use them directly
+        batch_labels_1 = processed_labels[0]  # Labels for group 1
+        batch_labels_2 = processed_labels[1]  # Labels for group 2
 
-        # Normalize transport plans
-        transport_plan_1 = transport_plan_1 / transport_plan_1.sum(dim=1, keepdim=True)
-        transport_plan_2 = transport_plan_2 / transport_plan_2.sum(dim=1, keepdim=True)
+        poe_stats_per_component = {}
+        unique_components = torch.unique(torch.cat([batch_labels_1, batch_labels_2]))
+        for component in unique_components:
+            mask_1 = (batch_labels_1 == component).squeeze()
+            mask_2 = (batch_labels_2 == component).squeeze()
 
-        # Compute weighted PoE
-        poe_stats = self._poe2(shared_stats)
-        
-        # Apply weights from transport plan
-        for k in groups_1_stats.keys():
-            poe_stats[0][k] = (poe_stats[0][k].unsqueeze(1) * transport_plan_1).sum(dim=1)
-            poe_stats[1][k] = (poe_stats[1][k].unsqueeze(1) * transport_plan_2).sum(dim=1)
+            if torch.any(mask_1) and torch.any(mask_2):
+                # Extract the relevant part of the batch transport plan for each dataset
+                component_plan_1 = batch_transport_plans[0][mask_1][:, mask_2]
+                component_plan_2 = batch_transport_plans[1][mask_2][:, mask_1]
+                
+                # Normalize the component plans while preserving zeros
+                def normalize_plan(plan):
+                    row_sums = plan.sum(dim=1, keepdim=True)
+                    row_sums = row_sums.clamp(min=1e-10)  # Avoid division by zero
+                    return torch.where(plan > 0, plan / row_sums, plan)
 
-        # Compute qz and theta for both groups
-        for group_output in poe_stats.values():
-            group_output["logtheta_qz"] = Normal(
-                group_output["logtheta_loc"], group_output["logtheta_scale"]
-            )
-            group_output["logtheta_log_z"] = (
-                group_output["logtheta_qz"].rsample().to("cuda:0" if torch.cuda.is_available() else "cpu")
-            )
-            group_output["logtheta_theta"] = F.softmax(group_output["logtheta_log_z"], -1)
+                normalized_plan_1 = normalize_plan(component_plan_1)
+                normalized_plan_2 = normalize_plan(component_plan_2)
 
-        return poe_stats
+                # Compute weighted average for group 1
+                component_stats_1 = {}
+                for k, v in groups_1_stats.items():
+                    weighted_v = torch.matmul(normalized_plan_1, v[mask_2])
+                    component_stats_1[k] = weighted_v
 
-    def _label_based_poe(self, shared_stats: dict, labels: torch.Tensor):
-        groups_1_stats, groups_2_stats = shared_stats.values()
-        groups_1_stats = {
-            k: groups_1_stats[k] for k in ["logtheta_loc", "logtheta_logvar", "logtheta_scale"] if k in groups_1_stats
-        }
-        groups_2_stats = {
-            k: groups_2_stats[k] for k in ["logtheta_loc", "logtheta_logvar", "logtheta_scale"] if k in groups_2_stats
-        }
+                # Compute weighted average for group 2
+                component_stats_2 = {}
+                for k, v in groups_2_stats.items():
+                    weighted_v = torch.matmul(normalized_plan_2, v[mask_1])
+                    component_stats_2[k] = weighted_v
 
-        groups_1_labels, groups_2_labels = labels.flatten(), labels.flatten()
-
-        groups_1_labels_list = groups_1_labels.flatten().tolist()  # to keep track of order
-        groups_2_labels_list = groups_2_labels.flatten().tolist()  # to keep track of order
-        # Convert label tensors to sets
-        set1 = set(groups_1_labels_list)
-        set2 = set(groups_2_labels_list)
-
-        # Find the intersection of labels
-        common_labels = list(set1.intersection(set2))
-
-        poe_stats_per_label = {}
-        for label in common_labels:
-            mask1 = (groups_1_labels == label).squeeze()
-            mask2 = (groups_2_labels == label).squeeze()
-            groups_1_stats_label = {key: value[mask1] for key, value in groups_1_stats.items()}
-            groups_2_stats_label = {key: value[mask2] for key, value in groups_2_stats.items()}
-            poe_stats_label = self._poe2({0: groups_1_stats_label, 1: groups_2_stats_label})
-            poe_stats_per_label[label] = poe_stats_label
-
-        poe_stats = {}
-        for label, value in poe_stats_per_label.items():
-            dataset_tensors = {}
-            for group, tensors in value.items():
-                tensor_dict = {}
-                for tensor_key, tensor in tensors.items():
-                    if tensor_key in tensor_dict:
-                        tensor_dict[tensor_key] = torch.cat([tensor_dict[tensor_key], tensor], dim=0)
-                    else:
-                        tensor_dict[tensor_key] = tensor
-                dataset_tensors[group] = tensor_dict
-            poe_stats[label] = dataset_tensors
-
-        # Find the unique labels in each tensor
-        unique_labels1 = torch.unique(groups_1_labels)
-        unique_labels2 = torch.unique(groups_2_labels)
-
-        # Find the non-common labels for tensor1
-        non_common_labels1 = unique_labels1[~torch.isin(unique_labels1, unique_labels2)]
-
-        # Find the non-common labels for tensor2
-        non_common_labels2 = unique_labels2[~torch.isin(unique_labels2, unique_labels1)]
-
-        for label in non_common_labels1:
-            poe_stats[label.item()] = {}
-            mask1 = (groups_1_labels == label).squeeze()
-            groups_1_stats_label = {key: value[mask1] for key, value in groups_1_stats.items()}
-            groups_2_stats_label = {
-                "logtheta_loc": torch.zeros_like(groups_1_stats_label["logtheta_loc"]),
-                "logtheta_logvar": torch.ones_like(groups_1_stats_label["logtheta_logvar"]),
-            }
-            poe_stats_label = self._poe2({0: groups_1_stats_label, 1: groups_2_stats_label})
-            poe_stats_label[1] = {
-                "logtheta_loc": torch.empty((0, poe_stats_label[0]["logtheta_loc"].shape[1])),
-                "logtheta_logvar": torch.empty((0, poe_stats_label[0]["logtheta_logvar"].shape[1])),
-                "logtheta_scale": torch.empty((0, poe_stats_label[0]["logtheta_scale"].shape[1])),
-            }
-            poe_stats[label.item()] = poe_stats_label  #  we try without poe with unmatched cell types
-
-        for label in non_common_labels2:
-            poe_stats[label.item()] = {}
-            mask2 = (groups_2_labels == label).squeeze()
-            groups_2_stats_label = {key: value[mask2] for key, value in groups_2_stats.items()}
-            groups_1_stats_label = {
-                "logtheta_loc": torch.zeros_like(groups_2_stats_label["logtheta_loc"]),
-                "logtheta_logvar": torch.ones_like(groups_2_stats_label["logtheta_logvar"]),
-            }
-            poe_stats_label = self._poe2({0: groups_1_stats_label, 1: groups_2_stats_label})
-
-            poe_stats_label[0] = {
-                "logtheta_loc": torch.empty((0, poe_stats_label[1]["logtheta_loc"].shape[1])),
-                "logtheta_logvar": torch.empty((0, poe_stats_label[1]["logtheta_logvar"].shape[1])),
-                "logtheta_scale": torch.empty((0, poe_stats_label[1]["logtheta_scale"].shape[1])),
-            }
-            poe_stats[label.item()] = poe_stats_label  # we try without poe with unmatched cell types
+                # Perform PoE
+                poe_stats_per_component[component.item()] = self._poe2({0: component_stats_1, 1: component_stats_2})
+            else:
+                # Handle unmatched cells
+                if torch.any(mask_1):
+                    poe_stats_per_component[component.item()] = {
+                        0: {k: v[mask_1] for k, v in groups_1_stats.items()},
+                        1: {k: torch.empty((0, v.shape[1]), device=v.device) for k, v in groups_2_stats.items()}
+                    }
+                if torch.any(mask_2):
+                    poe_stats_per_component[component.item()] = {
+                        0: {k: torch.empty((0, v.shape[1]), device=v.device) for k, v in groups_1_stats.items()},
+                        1: {k: v[mask_2] for k, v in groups_2_stats.items()}
+                    }
 
         # Initialize the output tensors
         groups_1_output = {
-            "logtheta_loc": torch.empty(
-                groups_1_stats["logtheta_loc"].shape[0], groups_1_stats["logtheta_loc"].shape[1], dtype=torch.float32
-            ),
-            "logtheta_logvar": torch.empty(
-                groups_1_stats["logtheta_loc"].shape[0], groups_1_stats["logtheta_loc"].shape[1], dtype=torch.float32
-            ),
-            "logtheta_scale": torch.empty(
-                groups_1_stats["logtheta_loc"].shape[0], groups_1_stats["logtheta_loc"].shape[1], dtype=torch.float32
-            ),
+            k: torch.empty(groups_1_stats[k].shape, dtype=torch.float32, device=groups_1_stats[k].device) for k in groups_1_stats
         }
-
         groups_2_output = {
-            "logtheta_loc": torch.empty(
-                groups_2_stats["logtheta_loc"].shape[0], groups_2_stats["logtheta_loc"].shape[1], dtype=torch.float32
-            ),
-            "logtheta_logvar": torch.empty(
-                groups_2_stats["logtheta_loc"].shape[0], groups_2_stats["logtheta_loc"].shape[1], dtype=torch.float32
-            ),
-            "logtheta_scale": torch.empty(
-                groups_2_stats["logtheta_loc"].shape[0], groups_2_stats["logtheta_loc"].shape[1], dtype=torch.float32
-            ),
+            k: torch.empty(groups_2_stats[k].shape, dtype=torch.float32, device=groups_2_stats[k].device) for k in groups_2_stats
         }
 
-        # Initialize a dictionary to store the count of occurrences for each label
-        label_count = {}
-        # Iterate over the labels and assign values to the output tensor
-        for i, label in enumerate(groups_1_labels):
-            # Get the count of occurrences for the current label
-            count = label_count.get(label.item(), 0)
-
-            # Update the count for the current label
-            label_count[label.item()] = count + 1
-
-            # Calculate the tensor index based on the count of occurrences
-            tensor_index = count % poe_stats[label.item()][0]["logtheta_loc"].size(0)
-
-            groups_1_output["logtheta_loc"][i] = poe_stats[label.item()][0]["logtheta_loc"][tensor_index, :]
-            groups_1_output["logtheta_logvar"][i] = poe_stats[label.item()][0]["logtheta_logvar"][tensor_index, :]
-            groups_1_output["logtheta_scale"][i] = poe_stats[label.item()][0]["logtheta_scale"][tensor_index, :]
-
-        # Initialize a dictionary to store the count of occurrences for each label
-        label_count = {}
-        # Iterate over the labels and assign values to the output tensor
-        for i, label in enumerate(groups_2_labels):
-            # Get the count of occurrences for the current label
-            count = label_count.get(label.item(), 0)
-
-            # Update the count for the current label
-            label_count[label.item()] = count + 1
-
-            # Calculate the tensor index based on the count of occurrences
-            tensor_index = count % poe_stats[label.item()][1]["logtheta_loc"].size(0)
-
-            groups_2_output["logtheta_loc"][i] = poe_stats[label.item()][1]["logtheta_loc"][tensor_index, :]
-            groups_2_output["logtheta_logvar"][i] = poe_stats[label.item()][1]["logtheta_logvar"][tensor_index, :]
-            groups_2_output["logtheta_scale"][i] = poe_stats[label.item()][1]["logtheta_scale"][tensor_index, :]
+        # Fill the output tensors while maintaining the original cell order
+        for group, labels, output in [(0, batch_labels_1, groups_1_output), (1, batch_labels_2, groups_2_output)]:
+            component_count = {}
+            for i, component in enumerate(labels):
+                component = component.item()
+                count = component_count.get(component, 0)
+                component_count[component] = count + 1
+                
+                component_stats = poe_stats_per_component[component][group]
+                tensor_index = count % component_stats["logtheta_loc"].size(0)
+                
+                for k in output:
+                    output[k][i] = component_stats[k][tensor_index]
 
         concat_poe_stats = {0: groups_1_output, 1: groups_2_output}
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Choose the appropriate device
-
-        # Transfer tensors to the desired device
-        for key, value in concat_poe_stats.items():
-            for sub_key, tensor in value.items():
-                concat_poe_stats[key][sub_key] = tensor.to(device)
-
-        concat_poe_stats[0]["logtheta_qz"] = Normal(
-            concat_poe_stats[0]["logtheta_loc"], concat_poe_stats[0]["logtheta_scale"]
-        )
-        concat_poe_stats[0]["logtheta_log_z"] = (
-            concat_poe_stats[0]["logtheta_qz"].rsample().to("cuda:0" if torch.cuda.is_available() else "cpu")
-        )
-        concat_poe_stats[0]["logtheta_theta"] = F.softmax(concat_poe_stats[0]["logtheta_log_z"], -1)
-
-        concat_poe_stats[1]["logtheta_qz"] = Normal(
-            concat_poe_stats[1]["logtheta_loc"], concat_poe_stats[1]["logtheta_scale"]
-        )
-        concat_poe_stats[1]["logtheta_log_z"] = (
-            concat_poe_stats[1]["logtheta_qz"].rsample().to("cuda:0" if torch.cuda.is_available() else "cpu")
-        )
-        concat_poe_stats[1]["logtheta_theta"] = F.softmax(concat_poe_stats[1]["logtheta_log_z"], -1)
+        # Compute qz and theta for both groups
+        for group in [0, 1]:
+            concat_poe_stats[group]["logtheta_qz"] = Normal(
+                concat_poe_stats[group]["logtheta_loc"], concat_poe_stats[group]["logtheta_scale"].clamp(min=1e-6)
+            )
+            concat_poe_stats[group]["logtheta_log_z"] = concat_poe_stats[group]["logtheta_qz"].rsample()
+            concat_poe_stats[group]["logtheta_theta"] = F.softmax(concat_poe_stats[group]["logtheta_log_z"], -1)
 
         return concat_poe_stats
 
@@ -470,12 +356,14 @@ class spVIPESmodule(BaseModuleClass):
         batch_index = [group[REGISTRY_KEYS.BATCH_KEY] for group in tensors_by_group]
         groups = [group["groups"] for group in tensors_by_group]
         global_indices = [group["indices"] for group in tensors_by_group]
+        processed_labels = [group["processed_transport_labels"] for group in tensors_by_group]
 
         input_dict = {
             "x": x,
             "batch_index": batch_index,
             "groups": groups,
-            "global_indices": global_indices
+            "global_indices": global_indices,
+            "processed_labels": processed_labels
         }
         return input_dict
 
@@ -498,7 +386,7 @@ class spVIPESmodule(BaseModuleClass):
         return input_dict
 
     @auto_move_data
-    def inference(self, x, batch_index, groups, global_indices):
+    def inference(self, x, batch_index, groups, global_indices, processed_labels):
         """Runs the encoder model."""
         x = {
             i: xs[:, self.groups_var_indices[i]] for i, xs in x.items()
@@ -528,7 +416,7 @@ class spVIPESmodule(BaseModuleClass):
             batch_transport_plans = None
 
         
-        poe_stats = self._supervised_poe(shared_stats, batch_transport_plans)
+        poe_stats = self._supervised_poe(shared_stats, batch_transport_plans, processed_labels)
         
         outputs = {
             "private_stats": private_stats,
@@ -550,13 +438,156 @@ class spVIPESmodule(BaseModuleClass):
         
         return {0: batch_transport_plan, 1: batch_transport_plan.T}
 
-    def _supervised_poe(self, shared_stats: dict, batch_transport_plans: Optional[dict]):
+    def _supervised_poe(self, shared_stats: dict, batch_transport_plans: Optional[Dict[int, torch.Tensor]], processed_labels: Optional[List[torch.Tensor]]):
         if self.use_transport_plan and batch_transport_plans is not None:
-            return self._weighted_poe(shared_stats, batch_transport_plans)
+            if processed_labels is None:
+                raise ValueError("Processed labels are required when using transport plan.")
+            return self._cluster_based_poe(shared_stats, batch_transport_plans, processed_labels)
         elif self.use_labels:
+            if not hasattr(self, 'labels') or self.labels is None:
+                raise ValueError("Labels are not set but are required for label-based POE.")
             return self._label_based_poe(shared_stats, self.labels)
         else:
-            raise ValueError("No transport plan or labels provided for supervised POE.")
+            raise ValueError("Either transport plan or labels must be provided for supervised POE.")
+
+    def _label_based_poe(self, shared_stats: dict, label_group: dict):
+        groups_1_stats, groups_2_stats = shared_stats.values()
+        groups_1_stats = {
+            k: groups_1_stats[k] for k in ["logtheta_loc", "logtheta_logvar", "logtheta_scale"] if k in groups_1_stats
+        }
+        groups_2_stats = {
+            k: groups_2_stats[k] for k in ["logtheta_loc", "logtheta_logvar", "logtheta_scale"] if k in groups_2_stats
+        }
+
+        groups_1_labels, groups_2_labels = label_group.values()
+
+        groups_1_labels_list = groups_1_labels.flatten().tolist()
+        groups_2_labels_list = groups_2_labels.flatten().tolist()
+        set1 = set(groups_1_labels_list)
+        set2 = set(groups_2_labels_list)
+
+        common_labels = list(set1.intersection(set2))
+
+        poe_stats_per_label = {}
+        for label in common_labels:
+            mask1 = (groups_1_labels == label).squeeze()
+            mask2 = (groups_2_labels == label).squeeze()
+            groups_1_stats_label = {key: value[mask1] for key, value in groups_1_stats.items()}
+            groups_2_stats_label = {key: value[mask2] for key, value in groups_2_stats.items()}
+            poe_stats_label = self._poe2({0: groups_1_stats_label, 1: groups_2_stats_label})
+            poe_stats_per_label[label] = poe_stats_label
+
+        poe_stats = {}
+        for label, value in poe_stats_per_label.items():
+            dataset_tensors = {}
+            for group, tensors in value.items():
+                tensor_dict = {}
+                for tensor_key, tensor in tensors.items():
+                    if tensor_key in tensor_dict:
+                        tensor_dict[tensor_key] = torch.cat([tensor_dict[tensor_key], tensor], dim=0)
+                    else:
+                        tensor_dict[tensor_key] = tensor
+                dataset_tensors[group] = tensor_dict
+            poe_stats[label] = dataset_tensors
+
+        unique_labels1 = torch.unique(groups_1_labels)
+        unique_labels2 = torch.unique(groups_2_labels)
+
+        non_common_labels1 = unique_labels1[~torch.isin(unique_labels1, unique_labels2)]
+        non_common_labels2 = unique_labels2[~torch.isin(unique_labels2, unique_labels1)]
+
+        for label in non_common_labels1:
+            poe_stats[label.item()] = {}
+            mask1 = (groups_1_labels == label).squeeze()
+            groups_1_stats_label = {key: value[mask1] for key, value in groups_1_stats.items()}
+            groups_2_stats_label = {
+                "logtheta_loc": torch.zeros_like(groups_1_stats_label["logtheta_loc"]),
+                "logtheta_logvar": torch.ones_like(groups_1_stats_label["logtheta_logvar"]),
+            }
+            poe_stats_label = self._poe2({0: groups_1_stats_label, 1: groups_2_stats_label})
+            poe_stats_label[1] = {
+                "logtheta_loc": torch.empty((0, poe_stats_label[0]["logtheta_loc"].shape[1])),
+                "logtheta_logvar": torch.empty((0, poe_stats_label[0]["logtheta_logvar"].shape[1])),
+                "logtheta_scale": torch.empty((0, poe_stats_label[0]["logtheta_scale"].shape[1])),
+            }
+            poe_stats[label.item()] = poe_stats_label
+
+        for label in non_common_labels2:
+            poe_stats[label.item()] = {}
+            mask2 = (groups_2_labels == label).squeeze()
+            groups_2_stats_label = {key: value[mask2] for key, value in groups_2_stats.items()}
+            groups_1_stats_label = {
+                "logtheta_loc": torch.zeros_like(groups_2_stats_label["logtheta_loc"]),
+                "logtheta_logvar": torch.ones_like(groups_2_stats_label["logtheta_logvar"]),
+            }
+            poe_stats_label = self._poe2({0: groups_1_stats_label, 1: groups_2_stats_label})
+            poe_stats_label[0] = {
+                "logtheta_loc": torch.empty((0, poe_stats_label[1]["logtheta_loc"].shape[1])),
+                "logtheta_logvar": torch.empty((0, poe_stats_label[1]["logtheta_logvar"].shape[1])),
+                "logtheta_scale": torch.empty((0, poe_stats_label[1]["logtheta_scale"].shape[1])),
+            }
+            poe_stats[label.item()] = poe_stats_label
+
+        groups_1_output = {
+            "logtheta_loc": torch.empty(
+                groups_1_stats["logtheta_loc"].shape[0], groups_1_stats["logtheta_loc"].shape[1], dtype=torch.float32
+            ),
+            "logtheta_logvar": torch.empty(
+                groups_1_stats["logtheta_loc"].shape[0], groups_1_stats["logtheta_loc"].shape[1], dtype=torch.float32
+            ),
+            "logtheta_scale": torch.empty(
+                groups_1_stats["logtheta_loc"].shape[0], groups_1_stats["logtheta_loc"].shape[1], dtype=torch.float32
+            ),
+        }
+
+        groups_2_output = {
+            "logtheta_loc": torch.empty(
+                groups_2_stats["logtheta_loc"].shape[0], groups_2_stats["logtheta_loc"].shape[1], dtype=torch.float32
+            ),
+            "logtheta_logvar": torch.empty(
+                groups_2_stats["logtheta_loc"].shape[0], groups_2_stats["logtheta_loc"].shape[1], dtype=torch.float32
+            ),
+            "logtheta_scale": torch.empty(
+                groups_2_stats["logtheta_loc"].shape[0], groups_2_stats["logtheta_loc"].shape[1], dtype=torch.float32
+            ),
+        }
+
+        label_count = {}
+        for i, label in enumerate(groups_1_labels):
+            count = label_count.get(label.item(), 0)
+            label_count[label.item()] = count + 1
+            tensor_index = count % poe_stats[label.item()][0]["logtheta_loc"].size(0)
+            groups_1_output["logtheta_loc"][i] = poe_stats[label.item()][0]["logtheta_loc"][tensor_index, :]
+            groups_1_output["logtheta_logvar"][i] = poe_stats[label.item()][0]["logtheta_logvar"][tensor_index, :]
+            groups_1_output["logtheta_scale"][i] = poe_stats[label.item()][0]["logtheta_scale"][tensor_index, :]
+
+        label_count = {}
+        for i, label in enumerate(groups_2_labels):
+            count = label_count.get(label.item(), 0)
+            label_count[label.item()] = count + 1
+            tensor_index = count % poe_stats[label.item()][1]["logtheta_loc"].size(0)
+            groups_2_output["logtheta_loc"][i] = poe_stats[label.item()][1]["logtheta_loc"][tensor_index, :]
+            groups_2_output["logtheta_logvar"][i] = poe_stats[label.item()][1]["logtheta_logvar"][tensor_index, :]
+            groups_2_output["logtheta_scale"][i] = poe_stats[label.item()][1]["logtheta_scale"][tensor_index, :]
+
+        concat_poe_stats = {0: groups_1_output, 1: groups_2_output}
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        for key, value in concat_poe_stats.items():
+            for sub_key, tensor in value.items():
+                concat_poe_stats[key][sub_key] = tensor.to(device)
+
+        for group in [0, 1]:
+            concat_poe_stats[group]["logtheta_qz"] = Normal(
+                concat_poe_stats[group]["logtheta_loc"], concat_poe_stats[group]["logtheta_scale"]
+            )
+            concat_poe_stats[group]["logtheta_log_z"] = (
+                concat_poe_stats[group]["logtheta_qz"].rsample().to(device)
+            )
+            concat_poe_stats[group]["logtheta_theta"] = F.softmax(concat_poe_stats[group]["logtheta_log_z"], -1)
+
+        return concat_poe_stats
 
     @auto_move_data
     def generative(self, private_stats, shared_stats, poe_stats, library, groups, batch_index):
@@ -738,3 +769,6 @@ class spVIPESmodule(BaseModuleClass):
         )
 
         return output
+    
+
+    

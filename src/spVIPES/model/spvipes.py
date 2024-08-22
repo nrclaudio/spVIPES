@@ -15,10 +15,122 @@ from spVIPES.data import AnnDataManager
 from spVIPES.dataloaders._concat_dataloader import ConcatDataLoader
 from spVIPES.model.base.training_mixin import MultiGroupTrainingMixin
 
-# from spVIPES.dataloader import DataSplitter
+import matplotlib.pyplot as plt
+import seaborn as sns
+import scanpy as sc
 from spVIPES.module.spVIPESmodule import spVIPESmodule
 
 logger = logging.getLogger(__name__)
+
+
+def process_transport_plan(transport_plan, adata, groups_key):
+    """
+    Process the transport plan using cluster labels to create a common set of clusters between datasets.
+
+    Parameters:
+    -----------
+    transport_plan : np.ndarray
+        The original transport plan matrix (shape: cells1 x cells2).
+    adata : AnnData
+        The AnnData object containing the combined datasets.
+    groups_key : str
+        Key for grouping of cells in `adata.obs`.
+
+    Returns:
+    --------
+    processed_labels : np.ndarray
+        Array of processed cluster labels for all cells.
+    """
+    transport_plan = np.nan_to_num(transport_plan, nan=0.0)
+    
+    # Extract the groups
+    groups = adata.obs[groups_key].unique()
+    cluster_labels = []
+    
+    for group in groups:
+        group_mask = adata.obs[groups_key] == group
+        group_adata = adata[group_mask].copy()
+        # Filter out .var indices that don't correspond to this group
+        group_var_names = adata.uns['groups_var_names'][group]
+        group_adata = group_adata[:, group_adata.var_names.isin(group_var_names)].copy()
+        
+        # Normalize the data
+        sc.pp.normalize_total(group_adata)
+        sc.pp.log1p(group_adata)
+        sc.pp.pca(group_adata)
+        
+        # Compute neighborhood graph
+        sc.pp.neighbors(group_adata)
+        
+        # Perform Leiden clustering
+        sc.tl.leiden(group_adata, resolution=0.5)
+        group_clusters = group_adata.obs['leiden'].astype(str)
+        group_clusters = group + '_' + group_clusters
+        cluster_labels.extend(group_clusters)
+
+    # Add the cluster labels to adata.obs
+    adata.obs['group_cluster_labels'] = pd.Categorical(cluster_labels)
+    
+    # Create a DataFrame of transport values between clusters
+    clusters1 = adata[adata.obs[groups_key] == groups[0]].obs['group_cluster_labels']
+    clusters2 = adata[adata.obs[groups_key] == groups[1]].obs['group_cluster_labels']
+    
+    transport_df = pd.DataFrame({
+        'source_cluster': np.repeat(clusters1, len(clusters2)),
+        'target_cluster': np.tile(clusters2, len(clusters1)),
+        'transport_value': transport_plan.flatten()
+    })
+    
+    # Create a pivot table of median transport values between clusters
+    pivot_df = transport_df.pivot_table(
+        values='transport_value', 
+        index='source_cluster', 
+        columns='target_cluster', 
+        aggfunc='median'
+    )
+    
+    # Function to rename clusters based on highest median transport value
+    def rename_clusters(pivot_df):
+        rename_dict = {}
+        used_target_clusters = set()
+        cluster_counter = 0
+        
+        for source_cluster in pivot_df.index:
+            if source_cluster not in rename_dict:
+                best_match = pivot_df.loc[source_cluster].idxmax()
+                while best_match in used_target_clusters:
+                    pivot_df.loc[source_cluster, best_match] = 0
+                    best_match = pivot_df.loc[source_cluster].idxmax()
+                
+                new_name = f"Cluster_{cluster_counter}"
+                rename_dict[source_cluster] = new_name
+                rename_dict[best_match] = new_name
+                used_target_clusters.add(best_match)
+                cluster_counter += 1
+        
+        # Handle any unmatched target clusters
+        for target_cluster in pivot_df.columns:
+            if target_cluster not in rename_dict:
+                rename_dict[target_cluster] = f"Cluster_{cluster_counter}"
+                cluster_counter += 1
+        
+        return rename_dict
+
+    rename_dict = rename_clusters(pivot_df)
+    
+    # Apply renaming to the AnnData object
+    adata.obs['processed_transport_labels'] = adata.obs['group_cluster_labels'].map(rename_dict)
+    
+    # Ensure the categories are in the correct order and format
+    categories = np.array(sorted(set(rename_dict.values()), key=lambda x: int(x.split('_')[1])))
+    adata.obs['processed_transport_labels'] = pd.Categorical(
+        adata.obs['processed_transport_labels'],
+        categories=categories,
+        ordered=True
+    )
+    
+    return adata.obs['processed_transport_labels'].values
+
 
 
 class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
@@ -39,7 +151,7 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
     Examples
     --------
     >>> adata = spVIPES.data.prepare_adatas({"dataset1": dataset1, "dataset2": dataset2})
-    >>> spVIPES.model.setup_anndata(adata, groups_key="groups", label_key="labels")
+    >>> spVIPES.model.setup_anndata(adata, groups_key="groups", transport_plan_key="transport_plan")
     >>> spvipes = spVIPES.model.spVIPES(adata)
     >>> group_indices_list = [np.where(adata.obs['groups'] == group)[0] for group in adata.obs['groups'].unique()]
     >>> spvipes.train(group_indices_list)
@@ -109,12 +221,12 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         cls,
         adata: AnnData,
         groups_key: str,
-        labels_key: Optional[str] = None,
         transport_plan_key: Optional[str] = None,
+        label_key: Optional[str] = None,
         batch_key: Optional[str] = None,
         layer: Optional[str] = None,
         **kwargs,
-    ) -> Optional[AnnData]:
+    ) -> None:
         """
         %(summary)s.
 
@@ -123,10 +235,12 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         %(param_adata)s
         groups_key
             Key for grouping of cells in `adata.obs`.
-        labels_key
-            Key for cell type labels in `adata.obs`. Required if transport_plan_key is not provided.
         transport_plan_key
-            Key for transport plan in `adata.uns`. If provided, it will be used instead of labels.
+            Key for transport plan in `adata.uns`. Optional.
+        label_key
+            Key for cell labels in `adata.obs`. Optional.
+        threshold
+            Threshold for sparsifying the transport plan. Default is 1e-9.
         %(param_batch_key)s
         %(param_layer)s
 
@@ -139,21 +253,32 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
             LayerField(REGISTRY_KEYS.X_KEY, layer, is_count_data=True),
             CategoricalObsField(REGISTRY_KEYS.BATCH_KEY, batch_key),
             CategoricalObsField("groups", groups_key),
-            CategoricalObsField("indices", "indices"),  # Always include indices
         ]
-        
+
         if transport_plan_key is not None:
             if transport_plan_key not in adata.uns:
                 raise ValueError(f"Transport plan key '{transport_plan_key}' not found in adata.uns")
             
-            # Ensure that 'indices' exists in adata.obs
+            # Process the transport plan
+            transport_plan = adata.uns[transport_plan_key]
+            
+            # Process the transport plan using the cluster labels
+            processed_labels = process_transport_plan(
+                transport_plan,
+                adata,
+                groups_key,
+            )
+            adata.obs['processed_transport_labels'] = pd.Categorical(processed_labels)
+            anndata_fields.append(CategoricalObsField("processed_transport_labels", "processed_transport_labels"))
+            
+            # Add indices field if using transport plan
+            anndata_fields.append(CategoricalObsField("indices", "indices"))
+            
             if "indices" not in adata.obs:
                 raise ValueError("'indices' must be present in adata.obs when using a transport plan")
-            adata.uns["transport_plan"] = adata.uns[transport_plan_key]
-        elif labels_key is not None:
-            anndata_fields.append(CategoricalObsField("labels", labels_key))
-        else:
-            raise ValueError("Either transport_plan_key or labels_key must be provided")
+
+        if label_key is not None:
+            anndata_fields.append(CategoricalObsField("labels", label_key))
 
         adata_manager = AnnDataManager(fields=anndata_fields, setup_method_args=setup_method_args)
         adata_manager.register_fields(adata, **kwargs)
@@ -203,7 +328,6 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
             self.adata_manager,
             indices_list=group_indices_list,
             shuffle=False,
-            weighted=False,
             drop_last=False,
             batch_size=batch_size,
         )
