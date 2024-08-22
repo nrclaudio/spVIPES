@@ -356,15 +356,24 @@ class spVIPESmodule(BaseModuleClass):
         batch_index = [group[REGISTRY_KEYS.BATCH_KEY] for group in tensors_by_group]
         groups = [group["groups"] for group in tensors_by_group]
         global_indices = [group["indices"] for group in tensors_by_group]
-        processed_labels = [group["processed_transport_labels"] for group in tensors_by_group]
-
+        
         input_dict = {
             "x": x,
             "batch_index": batch_index,
             "groups": groups,
             "global_indices": global_indices,
-            "processed_labels": processed_labels
         }
+
+        if self.use_transport_plan:
+            if "processed_transport_labels" not in tensors_by_group[0]:
+                raise ValueError("Processed transport labels are required when using transport plan.")
+            input_dict["processed_labels"] = [group["processed_transport_labels"] for group in tensors_by_group]
+        
+        if self.use_labels:
+            if "labels" not in tensors_by_group[0]:
+                raise ValueError("Labels are required when using label-based POE.")
+            input_dict["labels"] = [group["labels"].flatten() for group in tensors_by_group]
+
         return input_dict
 
     def _get_generative_input(self, tensors_by_group, inference_outputs):
@@ -386,7 +395,7 @@ class spVIPESmodule(BaseModuleClass):
         return input_dict
 
     @auto_move_data
-    def inference(self, x, batch_index, groups, global_indices, processed_labels):
+    def inference(self, x, batch_index, groups, global_indices, **kwargs):
         """Runs the encoder model."""
         x = {
             i: xs[:, self.groups_var_indices[i]] for i, xs in x.items()
@@ -410,13 +419,17 @@ class spVIPESmodule(BaseModuleClass):
             private_stats[group] = private_values
             shared_stats[group] = shared_values
         
-        if self.use_transport_plan and self.transport_plan is not None:
-            batch_transport_plans = self._get_batch_transport_plans(global_indices)
-        else:
-            batch_transport_plans = None
+        batch_transport_plans = None
+        processed_labels = None
+        labels = None
 
+        if self.use_transport_plan:
+            batch_transport_plans = self._get_batch_transport_plans(global_indices)
+            processed_labels = kwargs.get("processed_labels")
+        elif self.use_labels:
+            labels = kwargs.get("labels")
         
-        poe_stats = self._supervised_poe(shared_stats, batch_transport_plans, processed_labels)
+        poe_stats = self._supervised_poe(shared_stats, batch_transport_plans, processed_labels, labels)
         
         outputs = {
             "private_stats": private_stats,
@@ -438,15 +451,15 @@ class spVIPESmodule(BaseModuleClass):
         
         return {0: batch_transport_plan, 1: batch_transport_plan.T}
 
-    def _supervised_poe(self, shared_stats: dict, batch_transport_plans: Optional[Dict[int, torch.Tensor]], processed_labels: Optional[List[torch.Tensor]]):
-        if self.use_transport_plan and batch_transport_plans is not None:
+    def _supervised_poe(self, shared_stats: dict, batch_transport_plans: Optional[Dict[int, torch.Tensor]], processed_labels: Optional[List[torch.Tensor]], labels: Optional[List[torch.Tensor]]):
+        if self.use_transport_plan:
             if processed_labels is None:
                 raise ValueError("Processed labels are required when using transport plan.")
             return self._cluster_based_poe(shared_stats, batch_transport_plans, processed_labels)
         elif self.use_labels:
-            if not hasattr(self, 'labels') or self.labels is None:
-                raise ValueError("Labels are not set but are required for label-based POE.")
-            return self._label_based_poe(shared_stats, self.labels)
+            if labels is None:
+                raise ValueError("Labels are required when using label-based POE.")
+            return self._label_based_poe(shared_stats, labels)
         else:
             raise ValueError("Either transport plan or labels must be provided for supervised POE.")
 
