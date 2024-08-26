@@ -15,8 +15,7 @@ from spVIPES.data import AnnDataManager
 from spVIPES.dataloaders._concat_dataloader import ConcatDataLoader
 from spVIPES.model.base.training_mixin import MultiGroupTrainingMixin
 
-import matplotlib.pyplot as plt
-import seaborn as sns
+from scipy.optimize import linear_sum_assignment
 import scanpy as sc
 from spVIPES.module.spVIPESmodule import spVIPESmodule
 
@@ -63,7 +62,7 @@ def process_transport_plan(transport_plan, adata, groups_key):
         sc.pp.neighbors(group_adata)
         
         # Perform Leiden clustering
-        sc.tl.leiden(group_adata, resolution=0.5)
+        sc.tl.leiden(group_adata, resolution=1)
         group_clusters = group_adata.obs['leiden'].astype(str)
         group_clusters = group + '_' + group_clusters
         cluster_labels.extend(group_clusters)
@@ -87,33 +86,38 @@ def process_transport_plan(transport_plan, adata, groups_key):
         index='source_cluster', 
         columns='target_cluster', 
         aggfunc='median'
-    )
+    ) 
     
-    # Function to rename clusters based on highest median transport value
     def rename_clusters(pivot_df):
+        # Convert the pivot_df to a cost matrix (negative because we want to maximize)
+        cost_matrix = -pivot_df.values
+
+        # Apply the Hungarian algorithm
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+
+        # Create the rename dictionary
         rename_dict = {}
-        used_target_clusters = set()
-        cluster_counter = 0
+        for i, (source_idx, target_idx) in enumerate(zip(row_ind, col_ind)):
+            source_cluster = pivot_df.index[source_idx]
+            target_cluster = pivot_df.columns[target_idx]
+            new_name = f"Cluster_{i}"
+            rename_dict[source_cluster] = new_name
+            rename_dict[target_cluster] = new_name
+            logger.info(f"Matched source cluster '{source_cluster}' with target cluster '{target_cluster}'. New name: '{new_name}'")
+
+        # Handle any unmatched clusters
+        all_clusters = set(pivot_df.index) | set(pivot_df.columns)
+        matched_clusters = set(rename_dict.keys())
+        unmatched_clusters = all_clusters - matched_clusters
         
-        for source_cluster in pivot_df.index:
-            if source_cluster not in rename_dict:
-                best_match = pivot_df.loc[source_cluster].idxmax()
-                while best_match in used_target_clusters:
-                    pivot_df.loc[source_cluster, best_match] = 0
-                    best_match = pivot_df.loc[source_cluster].idxmax()
-                
-                new_name = f"Cluster_{cluster_counter}"
-                rename_dict[source_cluster] = new_name
-                rename_dict[best_match] = new_name
-                used_target_clusters.add(best_match)
-                cluster_counter += 1
-        
-        # Handle any unmatched target clusters
-        for target_cluster in pivot_df.columns:
-            if target_cluster not in rename_dict:
-                rename_dict[target_cluster] = f"Cluster_{cluster_counter}"
-                cluster_counter += 1
-        
+        for cluster in unmatched_clusters:
+            new_name = f"Cluster_{len(rename_dict) // 2}"
+            rename_dict[cluster] = new_name
+            logger.info(f"Unmatched cluster '{cluster}' assigned new name: '{new_name}'")
+
+        logger.info(f"Total clusters renamed: {len(rename_dict) // 2}")
+        logger.info(f"Number of unmatched clusters: {len(unmatched_clusters)}")
+
         return rename_dict
 
     rename_dict = rename_clusters(pivot_df)
