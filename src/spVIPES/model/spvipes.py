@@ -18,6 +18,8 @@ from spVIPES.model.base.training_mixin import MultiGroupTrainingMixin
 from scipy.optimize import linear_sum_assignment
 import scanpy as sc
 from spVIPES.module.spVIPESmodule import spVIPESmodule
+from scipy.stats import entropy
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +47,32 @@ def process_transport_plan(transport_plan, adata, groups_key):
     # Extract the groups
     groups = adata.obs[groups_key].unique()
     cluster_labels = []
+
+    def optimize_resolution(group_adata, group_transport_plan, other_group_size):
+        resolutions = [0.1, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0]
+        scores = []
+        for res in tqdm(resolutions, desc="Optimizing resolution"):
+            sc.tl.leiden(group_adata, resolution=res, key_added=f'leiden_{res}')
+            cluster_transport = np.zeros((len(group_adata.obs[f'leiden_{res}'].unique()), other_group_size))
+            for i, cluster in enumerate(group_adata.obs[f'leiden_{res}'].unique()):
+                mask = group_adata.obs[f'leiden_{res}'] == cluster
+                cluster_transport[i] = group_transport_plan[mask].sum(axis=0)
+            
+            # Normalize the cluster transport
+            cluster_transport /= cluster_transport.sum(axis=1, keepdims=True)
+            
+            # Calculate the entropy of the transport distribution for each cluster
+            cluster_entropies = entropy(cluster_transport, axis=1)
+            
+            # Use the negative mean entropy as the score (higher is better)
+            scores.append(-np.mean(cluster_entropies))
+        
+        optimal_res = resolutions[np.argmax(scores)]
+        return optimal_res
     
-    for group in groups:
+    optimal_resolutions = {}
+    
+    for i, group in enumerate(groups):
         group_mask = adata.obs[groups_key] == group
         group_adata = adata[group_mask].copy()
         # Filter out .var indices that don't correspond to this group
@@ -61,8 +87,14 @@ def process_transport_plan(transport_plan, adata, groups_key):
         # Compute neighborhood graph
         sc.pp.neighbors(group_adata)
         
-        # Perform Leiden clustering
-        sc.tl.leiden(group_adata, resolution=1)
+        # Optimize resolution
+        other_group_size = adata[adata.obs[groups_key] != group].shape[0]
+        group_transport_plan = transport_plan if i == 0 else transport_plan.T
+        optimal_res = optimize_resolution(group_adata, group_transport_plan, other_group_size)
+        optimal_resolutions[group] = optimal_res
+        
+        # Perform Leiden clustering with optimal resolution
+        sc.tl.leiden(group_adata, resolution=optimal_res)
         group_clusters = group_adata.obs['leiden'].astype(str)
         group_clusters = group + '_' + group_clusters
         cluster_labels.extend(group_clusters)
@@ -103,7 +135,6 @@ def process_transport_plan(transport_plan, adata, groups_key):
             new_name = f"Cluster_{i}"
             rename_dict[source_cluster] = new_name
             rename_dict[target_cluster] = new_name
-            logger.info(f"Matched source cluster '{source_cluster}' with target cluster '{target_cluster}'. New name: '{new_name}'")
 
         # Handle any unmatched clusters
         all_clusters = set(pivot_df.index) | set(pivot_df.columns)
@@ -113,10 +144,8 @@ def process_transport_plan(transport_plan, adata, groups_key):
         for cluster in unmatched_clusters:
             new_name = f"Cluster_{len(rename_dict) // 2}"
             rename_dict[cluster] = new_name
-            logger.info(f"Unmatched cluster '{cluster}' assigned new name: '{new_name}'")
 
-        logger.info(f"Total clusters renamed: {len(rename_dict) // 2}")
-        logger.info(f"Number of unmatched clusters: {len(unmatched_clusters)}")
+
 
         return rename_dict
 
@@ -132,6 +161,9 @@ def process_transport_plan(transport_plan, adata, groups_key):
         categories=categories,
         ordered=True
     )
+    
+    # Store the optimal resolutions in adata.uns
+    adata.uns['optimal_resolutions'] = optimal_resolutions
     
     return adata.obs['processed_transport_labels'].values
 

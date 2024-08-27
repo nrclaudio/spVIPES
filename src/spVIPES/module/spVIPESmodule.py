@@ -451,14 +451,17 @@ class spVIPESmodule(BaseModuleClass):
         
         return {0: batch_transport_plan, 1: batch_transport_plan.T}
 
-    def _supervised_poe(self, shared_stats: dict, batch_transport_plans: Optional[Dict[int, torch.Tensor]], processed_labels: Optional[List[torch.Tensor]], labels: Optional[List[torch.Tensor]]):
+    def _supervised_poe(self, shared_stats: dict, batch_transport_plans: Optional[Dict[int, torch.Tensor]], processed_labels: Optional[List[torch.Tensor]], labels: Optional[Dict[int, torch.Tensor]]):
         if self.use_transport_plan:
             if processed_labels is None:
                 raise ValueError("Processed labels are required when using transport plan.")
-            return self._cluster_based_poe(shared_stats, batch_transport_plans, processed_labels)
+            # Convert processed_labels list to a dictionary
+            label_group = {0: processed_labels[0], 1: processed_labels[1]}
+            return self._label_based_poe(shared_stats, label_group)
         elif self.use_labels:
             if labels is None:
                 raise ValueError("Labels are required when using label-based POE.")
+            # labels is already a dictionary, so we can use it directly
             return self._label_based_poe(shared_stats, labels)
         else:
             raise ValueError("Either transport plan or labels must be provided for supervised POE.")
