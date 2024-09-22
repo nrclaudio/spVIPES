@@ -223,6 +223,10 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         transport_plan = adata.uns.get("transport_plan")
         if transport_plan is not None:
             transport_plan = torch.tensor(transport_plan, dtype=torch.float32)
+        
+        pair_data = 'processed_transport_labels' not in adata.obs.columns 
+
+        
 
         use_labels = "labels" in self.adata_manager.data_registry
         n_labels = self.summary_stats.n_labels if use_labels else None
@@ -234,6 +238,7 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
             groups_var_indices=groups_var_indices,
             groups_obs_indices=groups_obs_indices,
             transport_plan=transport_plan,
+            pair_data=pair_data,
             use_labels=use_labels,
             n_labels=n_labels,
             n_batch=n_batch,
@@ -257,6 +262,7 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         cls,
         adata: AnnData,
         groups_key: str,
+        match_clusters: bool = True,
         transport_plan_key: Optional[str] = None,
         label_key: Optional[str] = None,
         batch_key: Optional[str] = None,
@@ -294,18 +300,20 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         if transport_plan_key is not None:
             if transport_plan_key not in adata.uns:
                 raise ValueError(f"Transport plan key '{transport_plan_key}' not found in adata.uns")
+            adata.uns['transport_plan'] = adata.uns[transport_plan_key]
             
             # Process the transport plan
             transport_plan = adata.uns[transport_plan_key]
             
-            # Process the transport plan using the cluster labels
-            processed_labels = process_transport_plan(
-                transport_plan,
-                adata,
-                groups_key,
-            )
-            adata.obs['processed_transport_labels'] = pd.Categorical(processed_labels)
-            anndata_fields.append(CategoricalObsField("processed_transport_labels", "processed_transport_labels"))
+            if match_clusters:   
+                # Process the transport plan using the cluster labels
+                processed_labels = process_transport_plan(
+                    transport_plan,
+                    adata,
+                    groups_key,
+                )
+                adata.obs['processed_transport_labels'] = pd.Categorical(processed_labels)
+                anndata_fields.append(CategoricalObsField("processed_transport_labels", "processed_transport_labels"))
             
             # Add indices field if using transport plan
             anndata_fields.append(CategoricalObsField("indices", "indices"))
@@ -350,7 +358,7 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         mc_samples
             For distributions with no closed-form mean (e.g., `logistic normal`), how many Monte Carlo
             samples to take for computing mean.
-        batch_size
+        batch_size 
             Minibatch size for data loading into model. Defaults to `scvi.settings.batch_size`.
 
         Returns
@@ -364,13 +372,15 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
             self.adata_manager,
             indices_list=group_indices_list,
             shuffle=False,
-            drop_last=False,
+            drop_last=True,
             batch_size=batch_size,
         )
         groups_1_latent_shared = []
         groups_2_latent_shared = []
         groups_1_latent = []
         groups_2_latent = []
+        groups_1_original_indices = []
+        groups_2_original_indices = []
         for tensors_by_group in scdl:
             inference_inputs = self.module._get_inference_input(tensors_by_group)
             outputs = self.module.inference(**inference_inputs)
@@ -406,15 +416,28 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
                     theta_groups_2 = theta_groups_2.mean(dim=0)
                 groups_1_latent += [theta_groups_1.cpu()]
                 groups_2_latent += [theta_groups_2.cpu()]
-        groups_1_latent = torch.cat(groups_1_latent).numpy()
-        groups_2_latent = torch.cat(groups_2_latent).numpy()
-        groups_1_latent_shared = torch.cat(groups_1_latent_shared).numpy()
-        groups_2_latent_shared = torch.cat(groups_2_latent_shared).numpy()
+            
+            groups_1_original_indices += [tensors_by_group[0]['indices'].cpu()]
+            groups_2_original_indices += [tensors_by_group[1]['indices'].cpu()]
+        
+        groups_1_original_indices = torch.cat(groups_1_original_indices).numpy().flatten()[:n_groups_1]
+        groups_2_original_indices = torch.cat(groups_2_original_indices).numpy().flatten()[:n_groups_2]
 
-        latent_private = {0: groups_1_latent[:n_groups_1], 1: groups_2_latent[:n_groups_2]}
-        latent_shared = {0: groups_1_latent_shared[:n_groups_1], 1: groups_2_latent_shared[:n_groups_2]}
 
-        return {"shared": latent_shared, "private": latent_private}
+
+
+        groups_1_latent = torch.cat(groups_1_latent).numpy()[:n_groups_1]
+        groups_2_latent = torch.cat(groups_2_latent).numpy()[:n_groups_2]
+        groups_1_latent_shared = torch.cat(groups_1_latent_shared).numpy()[:n_groups_1]
+        groups_2_latent_shared = torch.cat(groups_2_latent_shared).numpy()[:n_groups_2]
+
+
+        latent_private = {0: groups_1_latent, 1: groups_2_latent}
+        latent_shared = {0: groups_1_latent_shared, 1: groups_2_latent_shared}
+        latent_private_reordered = {0: groups_1_latent, 1: groups_2_latent[np.argsort(groups_2_original_indices)]}
+        latent_shared_reordered = {0: groups_1_latent_shared, 1: groups_2_latent_shared[np.argsort(groups_2_original_indices)]}
+
+        return {"shared": latent_shared, "private": latent_private, "shared_reordered": latent_shared_reordered, "private_reordered": latent_private_reordered}
         # return {'groups_1': latent[0], 'groups_2': latent[1]}
 
     def get_loadings(self) -> dict:

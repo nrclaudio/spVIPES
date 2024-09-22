@@ -44,6 +44,7 @@ class spVIPESmodule(BaseModuleClass):
         groups_obs_indices,
         groups_var_indices,
         transport_plan: Optional[torch.Tensor] = None,
+        pair_data: bool = False,
         use_labels: bool = False,
         n_labels: Optional[int] = None,
         n_batch: int = 0,
@@ -157,6 +158,7 @@ class spVIPESmodule(BaseModuleClass):
         self.transport_plan = transport_plan
         self.use_labels = use_labels
         self.n_labels = n_labels
+        self.pair_data = pair_data
 
     def _cluster_based_poe(self, shared_stats: dict, batch_transport_plans: Dict[int, torch.Tensor], processed_labels: List[torch.Tensor]):
         groups_1_stats, groups_2_stats = shared_stats.values()
@@ -364,10 +366,11 @@ class spVIPESmodule(BaseModuleClass):
             "global_indices": global_indices,
         }
 
-        if self.use_transport_plan:
-            if "processed_transport_labels" not in tensors_by_group[0]:
-                raise ValueError("Processed transport labels are required when using transport plan.")
-            input_dict["processed_labels"] = [group["processed_transport_labels"] for group in tensors_by_group]
+        if self.use_transport_plan and not self.pair_data:
+            required_key = "processed_transport_labels"
+            if required_key not in tensors_by_group[0]:
+                raise ValueError(f"{required_key} are required when using transport plan.")
+            input_dict["processed_labels"] = [group[required_key] for group in tensors_by_group]
         
         if self.use_labels:
             if "labels" not in tensors_by_group[0]:
@@ -425,10 +428,12 @@ class spVIPESmodule(BaseModuleClass):
 
         if self.use_transport_plan:
             batch_transport_plans = self._get_batch_transport_plans(global_indices)
-            processed_labels = kwargs.get("processed_labels")
+            if self.transport_plan is not None and not self.pair_data:
+                processed_labels = kwargs["processed_labels"]
         elif self.use_labels:
-            labels = kwargs.get("labels")
-        
+            if "labels" in kwargs:
+                labels = {i: label for i, label in enumerate(kwargs["labels"])}
+
         poe_stats = self._supervised_poe(shared_stats, batch_transport_plans, processed_labels, labels)
         
         outputs = {
@@ -453,11 +458,17 @@ class spVIPESmodule(BaseModuleClass):
 
     def _supervised_poe(self, shared_stats: dict, batch_transport_plans: Optional[Dict[int, torch.Tensor]], processed_labels: Optional[List[torch.Tensor]], labels: Optional[Dict[int, torch.Tensor]]):
         if self.use_transport_plan:
-            if processed_labels is None:
-                raise ValueError("Processed labels are required when using transport plan.")
-            # Convert processed_labels list to a dictionary
-            label_group = {0: processed_labels[0], 1: processed_labels[1]}
-            return self._label_based_poe(shared_stats, label_group)
+            if self.pair_data:
+                # Assuming batch_transport_plans[0] contains the transport plan for paired data
+                return self._paired_poe(shared_stats, batch_transport_plans[0])
+            elif batch_transport_plans is not None:
+                if processed_labels is None:
+                    raise ValueError("Processed labels are required when using transport plan.")
+                # Convert processed_labels list to a dictionary
+                label_group = {0: processed_labels[0], 1: processed_labels[1]}
+                return self._cluster_based_poe(shared_stats, batch_transport_plans, label_group)
+            else:
+                raise ValueError("Either paired cells or batch transport plans must be provided when using transport plan.")
         elif self.use_labels:
             if labels is None:
                 raise ValueError("Labels are required when using label-based POE.")
@@ -465,6 +476,76 @@ class spVIPESmodule(BaseModuleClass):
             return self._label_based_poe(shared_stats, labels)
         else:
             raise ValueError("Either transport plan or labels must be provided for supervised POE.")
+        
+    def _paired_poe(self, shared_stats: dict, transport_plan: torch.Tensor):
+        groups_1_stats, groups_2_stats = shared_stats.values()
+        groups_1_stats = {
+            k: groups_1_stats[k] for k in ["logtheta_loc", "logtheta_logvar", "logtheta_scale"] if k in groups_1_stats
+        }
+        groups_2_stats = {
+            k: groups_2_stats[k] for k in ["logtheta_loc", "logtheta_logvar", "logtheta_scale"] if k in groups_2_stats
+        }
+        
+        # Ensure both groups have the same number of cells
+        assert groups_1_stats["logtheta_loc"].shape[0] == groups_2_stats["logtheta_loc"].shape[0], "Paired PoE requires equal number of cells from both groups"
+        
+        # Find the index of the maximum value for each row in the transport plan
+        max_indices_1to2 = torch.argmax(transport_plan, dim=1)
+        max_indices_2to1 = torch.argmax(transport_plan, dim=0)
+        
+        # Use these indices to select the corresponding cells from the other dataset
+        matched_stats_1 = {}
+        matched_stats_2 = {}
+        for k in groups_1_stats:
+            matched_stats_1[k] = groups_2_stats[k][max_indices_1to2]
+            matched_stats_2[k] = groups_1_stats[k][max_indices_2to1]
+        
+        # Compute joint statistics for group 1
+        mus_1 = torch.stack([groups_1_stats["logtheta_loc"], matched_stats_1["logtheta_loc"]], dim=0)
+        logvars_1 = torch.stack([groups_1_stats["logtheta_logvar"], matched_stats_1["logtheta_logvar"]], dim=0)
+        mus_joint_1, logvars_joint_1 = self._product_of_experts(mus_1, logvars_1)
+        
+        # Compute joint statistics for group 2
+        mus_2 = torch.stack([matched_stats_2["logtheta_loc"], groups_2_stats["logtheta_loc"]], dim=0)
+        logvars_2 = torch.stack([matched_stats_2["logtheta_logvar"], groups_2_stats["logtheta_logvar"]], dim=0)
+        mus_joint_2, logvars_joint_2 = self._product_of_experts(mus_2, logvars_2)
+        
+        # Compute scales from logvars
+        scale_joint_1 = torch.exp(0.5 * logvars_joint_1)
+        scale_joint_2 = torch.exp(0.5 * logvars_joint_2)
+        
+        poe_stats = {
+            0: {
+                "logtheta_loc": mus_joint_1,
+                "logtheta_logvar": logvars_joint_1,
+                "logtheta_scale": scale_joint_1,
+            },
+            1: {
+                "logtheta_loc": mus_joint_2,
+                "logtheta_logvar": logvars_joint_2,
+                "logtheta_scale": scale_joint_2,
+            }
+        }
+        
+        # Compute qz and theta for both groups
+        for group in [0, 1]:
+            poe_stats[group]["logtheta_qz"] = Normal(
+                poe_stats[group]["logtheta_loc"], poe_stats[group]["logtheta_scale"].clamp(min=1e-6)
+            )
+            poe_stats[group]["logtheta_log_z"] = poe_stats[group]["logtheta_qz"].rsample()
+            poe_stats[group]["logtheta_theta"] = F.softmax(poe_stats[group]["logtheta_log_z"], -1)
+        
+        return poe_stats
+
+    def _product_of_experts(self, mus, logvars):
+        vars = torch.exp(logvars)
+        mus_joint = torch.sum(mus / vars, dim=0)
+        logvars_joint = torch.ones_like(mus_joint)
+        logvars_joint += torch.sum(1.0 / vars, dim=0)
+        logvars_joint = 1.0 / logvars_joint  # inverse
+        mus_joint *= logvars_joint
+        logvars_joint = torch.log(logvars_joint)
+        return mus_joint, logvars_joint
 
     def _label_based_poe(self, shared_stats: dict, label_group: dict):
         groups_1_stats, groups_2_stats = shared_stats.values()
