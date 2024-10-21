@@ -74,11 +74,11 @@ class AnnDataLoader(DataLoader):
             sampler_cls = (
                 SequentialSampler
                 if not shuffle and not weighted
-                else WeightedRandomSampler
-                if shuffle and weighted
-                else RandomSampler
-                if shuffle and not weighted
-                else None
+                else (
+                    WeightedRandomSampler
+                    if shuffle and weighted
+                    else RandomSampler if shuffle and not weighted else None
+                )
             )
             if sampler_cls != WeightedRandomSampler:
                 sampler = BatchSampler(
