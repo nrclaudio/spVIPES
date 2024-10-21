@@ -1,4 +1,5 @@
 """Main module."""
+
 from typing import Literal
 
 import numpy as np
