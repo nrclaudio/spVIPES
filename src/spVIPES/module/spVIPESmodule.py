@@ -429,11 +429,13 @@ class spVIPESmodule(BaseModuleClass):
         if self.use_transport_plan:
             batch_transport_plans = self._get_batch_transport_plans(global_indices)
             if self.transport_plan is not None and not self.pair_data:
-                processed_labels = kwargs["processed_labels"]
-        elif self.use_labels:
+                processed_labels = kwargs.get("processed_labels")
+                
+        if self.use_labels:
             if "labels" in kwargs:
                 labels = {i: label for i, label in enumerate(kwargs["labels"])}
 
+        
         poe_stats = self._supervised_poe(shared_stats, batch_transport_plans, processed_labels, labels)
         
         outputs = {
@@ -457,7 +459,10 @@ class spVIPESmodule(BaseModuleClass):
         return {0: batch_transport_plan, 1: batch_transport_plan.T}
 
     def _supervised_poe(self, shared_stats: dict, batch_transport_plans: Optional[Dict[int, torch.Tensor]], processed_labels: Optional[List[torch.Tensor]], labels: Optional[Dict[int, torch.Tensor]]):
-        if self.use_transport_plan:
+        # Prioritize label-based PoE when labels are explicitly provided
+        if self.use_labels and labels is not None:
+            return self._label_based_poe(shared_stats, labels)
+        elif self.use_transport_plan:
             if self.pair_data:
                 # Assuming batch_transport_plans[0] contains the transport plan for paired data
                 return self._paired_poe(shared_stats, batch_transport_plans[0])
@@ -469,11 +474,6 @@ class spVIPESmodule(BaseModuleClass):
                 return self._cluster_based_poe(shared_stats, batch_transport_plans, label_group)
             else:
                 raise ValueError("Either paired cells or batch transport plans must be provided when using transport plan.")
-        elif self.use_labels:
-            if labels is None:
-                raise ValueError("Labels are required when using label-based POE.")
-            # labels is already a dictionary, so we can use it directly
-            return self._label_based_poe(shared_stats, labels)
         else:
             raise ValueError("Either transport plan or labels must be provided for supervised POE.")
         
