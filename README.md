@@ -79,7 +79,7 @@ import spVIPES
 import scanpy as sc
 
 # Load your multi-group dataset
-adata = sc.read_h5ad("integrated_data.h5ad")
+adata = sc.read_h5ad("data.h5ad")
 
 # Configure integration strategy
 spVIPES.model.setup_anndata(

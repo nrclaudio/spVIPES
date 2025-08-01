@@ -11,7 +11,38 @@ from .utils import one_hot
 
 # Encoder without covariates
 class Encoder(nn.Module):
-    """Encoder for spVIPES"""
+    """
+    Variational encoder network for spVIPES.
+    
+    This encoder maps input gene expression data to latent representations using
+    a variational approach. It outputs both mean and variance parameters for the
+    latent distribution, enabling sampling during training and inference.
+
+    Parameters
+    ----------
+    n_input : int
+        Number of input features (genes) in the expression data.
+    n_topics : int  
+        Number of output dimensions in the latent space (topics/factors).
+    hidden : int, default=100
+        Number of hidden units in the fully connected layers.
+    dropout : float, default=0.1
+        Dropout rate applied to hidden layers for regularization.
+    n_cat_list : Iterable[int], optional
+        List of categorical covariate dimensions. Each element represents
+        the number of categories for a categorical covariate (e.g., batch).
+    groups : str, optional
+        Group identifier for this encoder instance.
+
+    Notes
+    -----
+    The encoder uses a two-layer fully connected architecture with ReLU activations
+    and batch normalization on the output layers. It outputs parameters for a
+    normal distribution in latent space, following the variational autoencoder framework.
+    
+    The forward pass returns both the latent representation (theta) and intermediate
+    statistics needed for the variational objective.
+    """
 
     def __init__(
         self,
@@ -52,7 +83,30 @@ class Encoder(nn.Module):
         )
 
     def forward(self, data: torch.Tensor, specie: int, *cat_list: int):
-        """Forward pass."""
+        """
+        Forward pass through the variational encoder.
+
+        Parameters
+        ----------
+        data : torch.Tensor
+            Input gene expression data with shape (batch_size, n_input).
+        specie : int
+            Species or group identifier (currently unused but kept for compatibility).
+        *cat_list : int
+            Variable length list of categorical covariate indices for each sample.
+
+        Returns
+        -------
+        dict
+            Dictionary containing encoder outputs:
+            
+            - **logtheta_loc** : torch.Tensor - Mean of latent distribution
+            - **logtheta_logvar** : torch.Tensor - Log variance of latent distribution  
+            - **logtheta_scale** : torch.Tensor - Standard deviation of latent distribution
+            - **log_z** : torch.Tensor - Sampled latent variable (log space)
+            - **theta** : torch.Tensor - Normalized latent representation (simplex)
+            - **qz** : torch.distributions.Normal - Latent distribution object
+        """
         one_hot_cat_list = []
         for n_cat, cat in zip(self.n_cat_list, cat_list):
             if n_cat > 1:  # only proceed if there's more than one batch, if no batch key is specified this value == 1.
@@ -87,7 +141,46 @@ class Encoder(nn.Module):
 
 
 class LinearDecoderSPVIPE(nn.Module):
-    """Linear decoder for scVI."""
+    """
+    Linear decoder for spVIPES with shared-private latent space decomposition.
+    
+    This decoder takes separate shared and private latent representations and
+    decodes them into gene expression parameters. It implements a mixture model
+    that combines shared and private contributions to generate the final output
+    distribution parameters for the negative binomial likelihood.
+
+    Parameters
+    ----------
+    n_input_private : int
+        Dimensionality of the private latent space input.
+    n_input_shared : int  
+        Dimensionality of the shared latent space input.
+    n_output : int
+        Number of output features (genes) to reconstruct.
+    n_cat_list : Iterable[int], optional
+        List of categorical covariate dimensions for batch correction.
+    use_batch_norm : bool, default=False
+        Whether to use batch normalization in the decoder layers.
+    use_layer_norm : bool, default=False
+        Whether to use layer normalization in the decoder layers.
+    bias : bool, default=False
+        Whether to include bias terms in linear layers.
+    n_hidden : int, default=256
+        Number of hidden units in the mixing network.
+    **kwargs
+        Additional keyword arguments passed to FCLayers.
+
+    Notes
+    -----
+    The decoder consists of three main components:
+    
+    1. **Private factor regressor**: Maps private latent space to gene-specific factors
+    2. **Shared factor regressor**: Maps shared latent space to gene-specific factors  
+    3. **Mixing network**: Learns how to combine shared and private contributions
+    
+    The output includes both separate private/shared reconstructions and a mixed
+    reconstruction that combines both components according to learned mixing weights.
+    """
 
     def __init__(
         self,
@@ -171,7 +264,34 @@ class LinearDecoderSPVIPE(nn.Module):
     def forward(
         self, dispersion: str, z_private: torch.Tensor, z_shared: torch.Tensor, library: torch.Tensor, *cat_list: int
     ):
-        """Forward pass."""
+        """
+        Forward pass through the decoder network.
+
+        Parameters
+        ----------
+        dispersion : str
+            Dispersion parameter identifier (currently unused but kept for compatibility).
+        z_private : torch.Tensor
+            Private latent representation with shape (batch_size, n_input_private).
+        z_shared : torch.Tensor
+            Shared latent representation with shape (batch_size, n_input_shared).
+        library : torch.Tensor
+            Library size factors with shape (batch_size, 1) for scaling output rates.
+        *cat_list : int
+            Variable length list of categorical covariate indices.
+
+        Returns
+        -------
+        tuple
+            Tuple of decoder outputs:
+            
+            - **px_scale_private** : torch.Tensor - Normalized expression rates from private space
+            - **px_scale_shared** : torch.Tensor - Normalized expression rates from shared space  
+            - **px_rate_private** : torch.Tensor - Library-scaled rates from private space
+            - **px_rate_shared** : torch.Tensor - Library-scaled rates from shared space
+            - **px_mixing** : torch.Tensor - Learned mixing weights (logits)
+            - **px_scale** : torch.Tensor - Final mixed expression rates
+        """
         #         # The decoder returns values for the parameters of the ZINB distribution
         #         raw_px_scale_private = self.factor_regressor_private(z_private, *cat_list)
         #         px_scale_private = torch.softmax(raw_px_scale_private, dim=-1)

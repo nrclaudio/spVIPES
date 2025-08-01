@@ -1,38 +1,138 @@
-# API
+# API Reference
 
-## Preprocessing
+## Core Classes
+
+### spVIPES Model
+
+The main model class for shared-private variational inference.
 
 ```{eval-rst}
-.. module:: spVIPES.pp
 .. currentmodule:: spVIPES
 
 .. autosummary::
     :toctree: generated
+    :template: class.rst
 
-    pp.basic_preproc
+    model.spvipes.spVIPES
+
+.. autoclass:: spVIPES.model.spvipes.spVIPES
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
 ```
 
-## Tools
+### spVIPES Module
+
+The PyTorch Lightning module implementing the variational autoencoder.
 
 ```{eval-rst}
-.. module:: spVIPES.tl
-.. currentmodule:: spVIPES
-
 .. autosummary::
     :toctree: generated
+    :template: class.rst
 
-    tl.basic_tool
+    module.spVIPESmodule.spVIPESmodule
+
+.. autoclass:: spVIPES.module.spVIPESmodule.spVIPESmodule
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
 ```
 
-## Plotting
+## Neural Network Components
+
+### Encoder
 
 ```{eval-rst}
-.. module:: spVIPES.pl
-.. currentmodule:: spVIPES
+.. autosummary::
+    :toctree: generated
+    :template: class.rst
 
+    nn.networks.Encoder
+
+.. autoclass:: spVIPES.nn.networks.Encoder
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
+```
+
+### Decoder
+
+```{eval-rst}
+.. autosummary::
+    :toctree: generated
+    :template: class.rst
+
+    nn.networks.LinearDecoderSPVIPE
+
+.. autoclass:: spVIPES.nn.networks.LinearDecoderSPVIPE
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
+```
+
+## Data Management
+
+### AnnData Manager
+
+```{eval-rst}
+.. autosummary::
+    :toctree: generated
+    :template: class.rst
+
+    data._manager.AnnDataManager
+
+.. autoclass:: spVIPES.data._manager.AnnDataManager
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
+```
+
+### Data Preparation
+
+```{eval-rst}
 .. autosummary::
     :toctree: generated
 
-    pl.basic_plot
-    pl.BasicClass
+    data.prepare_adatas.prepare_adatas
+
+.. autofunction:: spVIPES.data.prepare_adatas.prepare_adatas
+```
+
+## Data Loaders
+
+### Concatenated Data Loader
+
+```{eval-rst}
+.. autosummary::
+    :toctree: generated
+    :template: class.rst
+
+    dataloaders._concat_dataloader.ConcatDataLoader
+
+.. autoclass:: spVIPES.dataloaders._concat_dataloader.ConcatDataLoader
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
+```
+
+### AnnData Loader
+
+```{eval-rst}
+.. autosummary::
+    :toctree: generated
+    :template: class.rst
+
+    dataloaders._ann_dataloader.AnnDataLoader
+
+.. autoclass:: spVIPES.dataloaders._ann_dataloader.AnnDataLoader
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
 ```

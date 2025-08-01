@@ -17,23 +17,58 @@ torch.backends.cudnn.benchmark = True
 
 class spVIPESmodule(BaseModuleClass):
     """
-    Pytorch Implementation of Product of Experts LDA with batch-correction.
-    We construct the model around a basic version of scVI's underlying VAE.
+    PyTorch implementation of spVIPES variational autoencoder module.
+    
+    This module implements the core variational autoencoder with Product of Experts (PoE)
+    for shared-private latent space learning. It extends scVI's underlying VAE architecture
+    with multi-group integration capabilities and support for different PoE strategies.
 
     Parameters
     ----------
-    n_input
-        Number of input genes
-    n_batch
-        Number of batches, if 0, no batch correction is performed.
-    n_hidden
-        Number of nodes per hidden layer
-    n_dimensions
-        Number of dimensions in the latent space.
-    dropout_rate
-        Dropout rate for neural networks
-    encode_covariates
-        Whether to concatenate covariates to expression in encoder
+    groups_lengths : list of int
+        List containing the number of features (genes) for each group/dataset.
+    groups_obs_names : list
+        List of observation names for each group.
+    groups_var_names : list 
+        List of variable (gene) names for each group.
+    groups_obs_indices : list
+        List of observation indices for each group.
+    groups_var_indices : list
+        List of variable indices for each group.
+    transport_plan : torch.Tensor, optional
+        Precomputed optimal transport plan matrix for PoE alignment.
+    pair_data : bool, default=False
+        Whether to use paired data for direct cell-to-cell correspondences.
+    use_labels : bool, default=False
+        Whether to use cell type labels for supervised PoE alignment.
+    n_labels : int, optional
+        Number of unique cell type labels when using supervised alignment.
+    n_batch : int, default=0
+        Number of batches. If 0, no batch correction is performed.
+    n_hidden : int, default=128
+        Number of nodes per hidden layer in encoder and decoder networks.
+    n_dimensions_shared : int, default=25
+        Dimensionality of the shared latent space capturing common features.
+    n_dimensions_private : int, default=10
+        Dimensionality of private latent spaces capturing group-specific features.
+    dropout_rate : float, default=0.1
+        Dropout rate for neural networks to prevent overfitting.
+    use_batch_norm : bool, default=True
+        Whether to use batch normalization in neural networks.
+    use_layer_norm : bool, default=False
+        Whether to use layer normalization in neural networks.
+    log_variational_inference : bool, default=True
+        Whether to log-transform data before encoding for numerical stability.
+    log_variational_generative : bool, default=True
+        Whether to log-transform data before decoding for numerical stability.
+    dispersion : {"gene", "gene-batch", "gene-cell"}, default="gene"
+        Level at which to model the dispersion parameter in the negative binomial distribution.
+
+    Notes
+    -----
+    This module is based on the scVI framework and implements the variational inference
+    described in the spVIPES paper. The Product of Experts mechanism allows for flexible
+    integration of multiple single-cell datasets with different feature sets.
     """
 
     def __init__(
@@ -58,37 +93,23 @@ class spVIPESmodule(BaseModuleClass):
         log_variational_generative: bool = True,
         dispersion: Literal["gene", "gene-batch", "gene-cell"] = "gene",
     ):
-        """Variational auto-encoder model.
+        """
+        Initialize the spVIPES variational autoencoder module.
 
-        This is an implementation of the scVI model described in :cite:p:`Lopez18`.
+        This method sets up the neural network components including encoders and decoders
+        for each group, and configures the Product of Experts mechanism based on the
+        provided parameters. The module extends scVI's VAE architecture for multi-group
+        integration with shared-private latent spaces.
 
-        Parameters
-        ----------
-        n_batch
-            Number of batches, if 0, no batch correction is performed.
-        n_hidden
-            Number of nodes per hidden layer
-        n_dimensions_shared
-            Dimensionalities of the private spaces
-        n_dimensions_private
-            Dimensionality of the shared space
-        dropout_rate
-            Dropout rate for neural networks
-        log_variational_inference
-            Log(data+1) prior to encoding for numerical stability. Not normalization.
-        log_variational_generative
-            Log(data+1) prior to reconstruction for numerical stability. Not normalization.
-        use_batch_norm
-            Whether to use batch norm in layers.
-        use_layer_norm
-            Whether to use layer norm in layers.
-        dispersion
-            One of the following
-
-            * ``'gene'`` - dispersion parameter of NB is constant per gene across cells
-            * ``'gene-batch'`` - dispersion can differ between different batches
-            * ``'gene-label'`` - dispersion can differ between different labels
-            * ``'gene-cell'`` - dispersion can differ for every gene in every cell
+        Notes
+        -----
+        The initialization automatically configures the appropriate PoE strategy based on
+        the provided inputs (transport_plan, use_labels, pair_data). The module creates
+        separate encoders and decoders for each group while sharing the latent space
+        structure for integration.
+        
+        The dispersion parameter controls how the negative binomial distribution variance
+        is modeled, with gene-level being the most common choice for single-cell data.
         """
         super().__init__()
         self.n_dimensions_shared = n_dimensions_shared

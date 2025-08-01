@@ -164,31 +164,53 @@ def process_transport_plan(transport_plan, adata, groups_key):
 
 class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
     """
-    Implementation of the spVIPES model
+    Implementation of the spVIPES model.
+    
+    spVIPES (shared-private Variational Inference with Product of Experts and Supervision) 
+    is a method for integrating multi-group single-cell datasets using a shared-private 
+    latent space approach. The model learns both shared representations (common across 
+    groups) and private representations (group-specific) through a Product of Experts (PoE) 
+    framework.
+
+    Parameters
     ----------
-    adata
-        AnnData object that has been registered via :math:`~mypackage.MyModel.setup_anndata`.
-    n_hidden
-        Number of nodes per hidden layer.
-    n_dimensions_shared
-        Dimensionality of the shared latent space.
-    n_dimensions_private
-        Dimensionalites of the private latent spaces.
+    adata : AnnData
+        AnnData object that has been registered via :func:`~spVIPES.model.spVIPES.setup_anndata`.
+    n_hidden : int, default=128
+        Number of nodes per hidden layer in the neural networks.
+    n_dimensions_shared : int, default=25
+        Dimensionality of the shared latent space. This space captures features 
+        common across all groups/datasets.
+    n_dimensions_private : int, default=10
+        Dimensionality of the private latent spaces. Each group gets its own 
+        private latent space of this dimensionality.
+    dropout_rate : float, default=0.1
+        Dropout rate for neural networks to prevent overfitting.
     **model_kwargs
-        Keyword args for :class:`~mypackage.MyModule`
+        Additional keyword arguments passed to the underlying module.
 
     Examples
     --------
+    Basic usage with cell type labels:
+    
+    >>> import spVIPES
     >>> adata = spVIPES.data.prepare_adatas({"dataset1": dataset1, "dataset2": dataset2})
-    >>> spVIPES.model.setup_anndata(adata, groups_key="groups", transport_plan_key="transport_plan")
-    >>> spvipes = spVIPES.model.spVIPES(adata)
-    >>> group_indices_list = [np.where(adata.obs['groups'] == group)[0] for group in adata.obs['groups'].unique()]
-    >>> spvipes.train(group_indices_list)
-    >>> latents = spvipes.get_latent_representation(group_indices_list)
+    >>> spVIPES.model.spVIPES.setup_anndata(adata, groups_key="groups", label_key="cell_type")
+    >>> model = spVIPES.model.spVIPES(adata)
+    >>> model.train()
+    >>> latents = model.get_latent_representation()
+    
+    Usage with optimal transport:
+    
+    >>> spVIPES.model.spVIPES.setup_anndata(adata, groups_key="groups", transport_plan_key="transport_plan")
+    >>> model = spVIPES.model.spVIPES(adata)
+    >>> model.train()
 
     Notes
     -----
-    We recommend n_dimensions_private < n_dimensions_shared
+    - We recommend setting n_dimensions_private < n_dimensions_shared for optimal performance
+    - The model automatically selects the appropriate PoE variant based on provided inputs
+    - GPU acceleration is strongly recommended for large datasets
     """
 
     def __init__(
@@ -274,25 +296,61 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         **kwargs,
     ) -> None:
         """
-        %(summary)s.
+        Set up AnnData object for spVIPES model.
+
+        This method registers the AnnData object with the model, configuring the
+        appropriate data fields and PoE strategy based on the provided parameters.
+        The method automatically determines whether to use label-based PoE, 
+        optimal transport PoE, or cluster-based PoE.
 
         Parameters
         ----------
-        %(param_adata)s
-        groups_key
-            Key for grouping of cells in `adata.obs`.
-        transport_plan_key
-            Key for transport plan in `adata.uns`. Optional.
-        label_key
-            Key for cell labels in `adata.obs`. Optional.
-        threshold
-            Threshold for sparsifying the transport plan. Default is 1e-9.
-        %(param_batch_key)s
-        %(param_layer)s
+        adata : AnnData
+            Annotated data object containing the single-cell data to be integrated.
+        groups_key : str
+            Key in `adata.obs` that defines the grouping of cells (e.g., dataset, batch, condition).
+            This determines which cells belong to which group for integration.
+        match_clusters : bool, default=False
+            Whether to match clusters when using optimal transport. If True, enables
+            cluster-based PoE which automatically matches cell clusters between groups.
+        transport_plan_key : str, optional
+            Key in `adata.uns` containing the precomputed optimal transport plan.
+            If provided, enables optimal transport PoE for data integration.
+        label_key : str, optional  
+            Key in `adata.obs` containing cell type labels. If provided, enables
+            label-based PoE which uses supervised alignment based on cell types.
+        batch_key : str, optional
+            Key in `adata.obs` for batch information to enable batch effect correction.
+        layer : str, optional
+            Key in `adata.layers` to use for the expression data. If None, uses `adata.X`.
+        **kwargs
+            Additional keyword arguments passed to the parent setup method.
 
         Returns
         -------
-        %(returns)s
+        None
+            The method modifies the AnnData object in place and registers it with the model.
+
+        Notes
+        -----
+        Priority of PoE strategies (when multiple options are available):
+        1. Label-based PoE (if `label_key` is provided)
+        2. Optimal transport PoE (if `transport_plan_key` is provided)
+        3. Cluster-based PoE (if `match_clusters=True`)
+
+        Examples
+        --------
+        Basic setup with groups only:
+        
+        >>> spVIPES.model.spVIPES.setup_anndata(adata, groups_key="dataset")
+        
+        Setup with cell type supervision:
+        
+        >>> spVIPES.model.spVIPES.setup_anndata(adata, groups_key="dataset", label_key="cell_type")
+        
+        Setup with optimal transport:
+        
+        >>> spVIPES.model.spVIPES.setup_anndata(adata, groups_key="dataset", transport_plan_key="transport_matrix")
         """
         setup_method_args = cls._get_setup_method_args(**locals())
         anndata_fields = [

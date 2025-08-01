@@ -125,6 +125,61 @@ nitpick_ignore = [
     #     ("py:class", "igraph.Graph"),
 ]
 
+# Mock imports for autodoc when dependencies can't be imported
+autodoc_mock_imports = [
+    "torch",
+    "torchmetrics", 
+    "pytorch_lightning",
+    "scvi",
+    "scvi.model.base",
+    "scvi.data",
+    "scvi.data.fields",
+    "scvi.utils",
+    "scvi.module.base",
+    "scanpy",
+    "anndata",
+    "mudata",
+    "pandas",
+    "numpy",
+    "scipy",
+    "sklearn",
+    "matplotlib",
+    "seaborn",
+    "tqdm",
+    "jax",
+    "jaxlib",
+    "numpyro",
+    "optax",
+    "flax",
+]
+
+# Enhanced autodoc configuration for detailed API documentation
+autodoc_default_options = {
+    'members': True,
+    'undoc-members': True,
+    'show-inheritance': True,
+    'inherited-members': True,
+    'special-members': '__init__',
+    'member-order': 'bysource',
+    'exclude-members': '__weakref__',
+}
+
+# More detailed autodoc behavior
+autodoc_class_signature = "separated"
+autodoc_member_order = 'bysource'
+autodoc_typehints = "description"
+autodoc_typehints_description_target = "documented"
+
+# Preserve parameter order and formatting
+napoleon_use_param = True
+napoleon_use_rtype = True
+napoleon_use_keyword = True
+napoleon_preprocess_types = True
+napoleon_type_aliases = None
+
+# Suppress import warnings but preserve other warnings
+suppress_warnings = ['autodoc.import_object']
+
 
 def setup(app):
     """App setup hook."""
