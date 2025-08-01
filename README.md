@@ -7,6 +7,12 @@
 [badge-tests]: https://img.shields.io/github/actions/workflow/status/nrclaudio/spVIPES/test.yaml?branch=main
 [link-tests]: https://github.com/nrclaudio/spVIPES/actions/workflows/test.yml
 
+[scverse-discourse]: https://discourse.scverse.org/
+[issue-tracker]: https://github.com/nrclaudio/spVIPES/issues
+[changelog]: https://spVIPES.readthedocs.io/latest/changelog.html
+[link-docs]: https://spVIPES.readthedocs.io
+[link-api]: https://spVIPES.readthedocs.io/latest/api.html
+
 <!-- [badge-docs]: https://img.shields.io/readthedocs/spVIPES -->
 
 Shared-private Variational Inference with Product of Experts and Supervision
@@ -164,8 +170,3 @@ If you found a bug, please use the [issue tracker][issue-tracker].
 
 > t.b.a
 
-[scverse-discourse]: https://discourse.scverse.org/
-[issue-tracker]: https://github.com/nrclaudio/spVIPES/issues
-[changelog]: https://spVIPES.readthedocs.io/latest/changelog.html
-[link-docs]: https://spVIPES.readthedocs.io
-[link-api]: https://spVIPES.readthedocs.io/latest/api.html
