@@ -97,7 +97,6 @@ class AnnDataLoader(DataLoader):
         super().__init__(self.dataset, **self.data_loader_kwargs)
 
 
-
 def _dummy_collate(b: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
     """Dummy collate to have dataloader return numpy ndarrays."""
     return b

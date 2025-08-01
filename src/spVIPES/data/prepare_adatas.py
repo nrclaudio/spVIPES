@@ -31,7 +31,7 @@ def prepare_adatas(
             else:
                 cols_to_use = adata.obs.columns.difference(groups_obs[groups].columns)
                 groups_obs[groups] = groups_obs[groups].join(adata.obs[cols_to_use])
-              # Store var_names for each group
+            # Store var_names for each group
             adata.obs["groups"] = groups
             adata.var_names = f"{groups}_" + adata.var_names
             groups_var_names[groups] = adata.var_names
@@ -49,7 +49,7 @@ def prepare_adatas(
     multigroups_adata.uns["groups_lengths"] = groups_lengths
     multigroups_adata.uns["groups_var_names"] = groups_var_names
     multigroups_adata.uns["groups_mapping"] = groups_mapping
-    
+
     # Create indices column
     indices = []
     for _, group_indices in zip(adatas.keys(), multigroups_adata.uns["groups_obs_indices"]):
