@@ -433,7 +433,7 @@ class spVIPESmodule(BaseModuleClass):
                 
         if self.use_labels:
             if "labels" in kwargs:
-                labels = {i: label for i, label in enumerate(kwargs["labels"])}
+                labels = dict(enumerate(kwargs["labels"]))
 
         
         poe_stats = self._supervised_poe(shared_stats, batch_transport_plans, processed_labels, labels)

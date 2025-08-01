@@ -52,7 +52,7 @@ def prepare_adatas(
     
     # Create indices column
     indices = []
-    for group, group_indices in zip(adatas.keys(), multigroups_adata.uns["groups_obs_indices"]):
+    for _, group_indices in zip(adatas.keys(), multigroups_adata.uns["groups_obs_indices"]):
         group_size = len(group_indices)
         indices.extend(np.arange(group_size, dtype=np.int32))
     multigroups_adata.obs["indices"] = indices

@@ -572,7 +572,6 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
 
     def _format_results(self, results, n_groups_1, n_groups_2):
         """Format the final results dictionary."""
-        groups_1_original_indices = torch.cat(results['groups_1_original_indices']).numpy().flatten()[:n_groups_1]
         groups_2_original_indices = torch.cat(results['groups_2_original_indices']).numpy().flatten()[:n_groups_2]
 
         groups_1_latent = torch.cat(results['groups_1_latent']).numpy()[:n_groups_1]

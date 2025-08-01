@@ -51,11 +51,7 @@ class ConcatDataLoader(DataLoader):
         self._drop_last = drop_last
         self._shuffle = shuffle
 
-        # Extract transport plan
-        transport_plan = adata_manager.adata.uns.get('transport_plan')
-        
         self.dataloaders = []
-        largest_species = max([len(indices) for indices in indices_list])
         for indices in indices_list:
             self.dataloaders.append(
                     AnnDataLoader(
