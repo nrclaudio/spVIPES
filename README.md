@@ -7,8 +7,7 @@
 [![Tests][badge-tests]][link-tests]
 [![Python][badge-python]][link-python]
 [![PyPI][badge-pypi]][link-pypi]
-
-<!-- [![Documentation][badge-docs]][link-docs] -->
+[![Documentation][badge-docs]][link-docs]
 
 _A novel approach for integrating multi-group single-cell datasets through shared-private latent representations_
 
@@ -173,7 +172,6 @@ model.train(
 -   [Basic Tutorial](docs/notebooks/Tutorial.ipynb) — Complete walkthrough of spVIPES functionality
 -   [API Documentation][link-api] — Comprehensive API reference
 
-
 ## Support & Community
 
 💬 **Get Help**
@@ -204,9 +202,7 @@ If you use spVIPES in your research, please cite:
 [badge-tests]: https://img.shields.io/github/actions/workflow/status/nrclaudio/spVIPES/test.yaml?branch=main
 [badge-python]: https://img.shields.io/pypi/pyversions/spVIPES
 [badge-pypi]: https://img.shields.io/pypi/v/spVIPES
-
-<!-- [badge-docs]: https://img.shields.io/readthedocs/spVIPES -->
-
+[badge-docs]: https://readthedocs.org/projects/spvipes/badge/?version=latest
 [link-tests]: https://github.com/nrclaudio/spVIPES/actions/workflows/test.yml
 [link-python]: https://pypi.org/project/spVIPES
 [link-pypi]: https://pypi.org/project/spVIPES
