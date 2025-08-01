@@ -31,30 +31,55 @@ class MultiGroupTrainingMixin:
         **trainer_kwargs,
     ) -> None:
         """
-        Train a multigroup model.
-        Args:
-        ----
-            group_indices_list: Indices corresponding to each group of samples.
-            max_epochs: Number of passes through the dataset. If `None`, default to
-                `np.min([round((20000 / n_cells) * 400), 400])`.
-            use_gpu: Use default GPU if available (if `None` or `True`), or index of
-                GPU to use (if `int`), or name of GPU (if `str`, e.g., `"cuda:0"`),
-                or use CPU (if `False`).
-            train_size: Size of training set in the range [0.0, 1.0].
-            validation_size: Size of the validation set. If `None`, default to
-                `1 - train_size`. If `train_size + validation_size < 1`, the remaining
-                cells belong to the test set.
-            batch_size: Mini-batch size to use during training.
-            early_stopping: Perform early stopping. Additional arguments can be passed
-                in `**kwargs`. See :class:`~scvi.train.Trainer` for further options.
-            plan_kwargs: Keyword args for :class:`~scvi.train.TrainingPlan`. Keyword
-                arguments passed to `train()` will overwrite values present
-                in `plan_kwargs`, when appropriate.
-            **trainer_kwargs: Other keyword args for :class:`~scvi.train.Trainer`.
+        Train a multigroup spVIPES model.
+
+        This method trains the model using a custom data splitter that handles
+        multiple groups of cells separately while maintaining the shared-private
+        latent space learning objective.
+
+        Parameters
+        ----------
+        group_indices_list : list[list[int]]
+            List of indices corresponding to each group of samples. Each inner list
+            contains the indices for cells belonging to that specific group.
+        max_epochs : int, optional
+            Number of passes through the dataset. If None, defaults to
+            ``np.min([round((20000 / n_cells) * 400), 400])``.
+        use_gpu : str, int, bool, optional
+            GPU usage specification. Use default GPU if available (if None or True),
+            or index of GPU to use (if int), or name of GPU (if str, e.g., "cuda:0"),
+            or use CPU (if False).
+        train_size : float, default=0.9
+            Size of training set in the range [0.0, 1.0].
+        validation_size : float, optional
+            Size of the validation set. If None, defaults to ``1 - train_size``.
+            If ``train_size + validation_size < 1``, the remaining cells belong
+            to the test set.
+        batch_size : int, default=128
+            Mini-batch size to use during training.
+        early_stopping : bool, default=False
+            Whether to perform early stopping. Additional arguments can be passed
+            in ``**trainer_kwargs``.
+        plan_kwargs : dict, optional
+            Keyword arguments for the training plan. Arguments passed to ``train()``
+            will overwrite values present in ``plan_kwargs``, when appropriate.
+        n_steps_kl_warmup : int, optional
+            Number of training steps for KL warmup. Takes precedence over n_epochs_kl_warmup.
+        n_epochs_kl_warmup : int, default=400
+            Number of epochs for KL divergence warmup.
+        **trainer_kwargs
+            Additional keyword arguments for the trainer.
 
         Returns
         -------
-            None. The model is trained.
+        None
+            The model is trained in-place.
+
+        Notes
+        -----
+        This method uses a specialized MultiGroupDataSplitter that ensures proper
+        handling of multiple cell groups during training, maintaining the integrity
+        of the shared-private latent space learning.
         """
         # if batch_sizes is None:
         #     n_cells_per_group = [len(group) for group in group_indices_list]

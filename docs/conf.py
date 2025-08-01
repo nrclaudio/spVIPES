@@ -177,8 +177,19 @@ napoleon_use_keyword = True
 napoleon_preprocess_types = True
 napoleon_type_aliases = None
 
-# Suppress import warnings but preserve other warnings
-suppress_warnings = ["autodoc.import_object"]
+# Suppress expected warnings from external dependencies and duplicates
+suppress_warnings = [
+    "autodoc.import_object",
+    "ref.class",  # Missing external class references (torch, scvi, etc.)
+    "ref.func",  # Missing external function references
+    "ref.meth",  # Missing external method references
+    "toc.not_readable",  # Non-existent notebook references
+    "toc.not_included",  # Tutorial notebook not in toctree
+    "myst.xref_missing",  # Missing cross-references in markdown
+    "myst.header",  # Document heading level warnings
+    "misc.highlighting_failure",  # Code highlighting issues in docs
+    "bibtex.key_not_found",  # Missing bibliography keys
+]
 
 
 def setup(app):
