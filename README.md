@@ -1,172 +1,217 @@
+<div align="center">
+
 # spVIPES
 
-[![Tests][badge-tests]][link-tests]
+**Shared-private Variational Inference with Product of Experts and Supervision**
 
+[![Tests][badge-tests]][link-tests]
+[![Python][badge-python]][link-python]
+[![PyPI][badge-pypi]][link-pypi]
 <!-- [![Documentation][badge-docs]][link-docs] -->
 
+*A novel approach for integrating multi-group single-cell datasets through shared-private latent representations*
+
+</div>
+
+---
+
+## About
+
+spVIPES enables robust integration of multi-group single-cell datasets through a principled shared-private latent space decomposition. The method leverages a Product of Experts (PoE) framework to learn both shared biological signals common across datasets and private representations capturing group-specific variations.
+
+
+### Integration Strategies
+
+spVIPES provides three complementary approaches for dataset alignment:
+
+| Method | Description | Best Use Case |
+|--------|-------------|---------------|
+| **Label-based PoE** | Uses cell type annotations for direct supervision | High-quality cell type labels available |
+| **OT Paired PoE** | Direct cell-to-cell correspondences via optimal transport | Known cellular correspondences (e.g., time series) |
+| **OT Cluster-based PoE** | Automated cluster matching with transport plans | Similar cell populations, no direct correspondences |
+
+> **Note:** The method automatically selects the most appropriate strategy based on available annotations and transport information.
+
+## Installation
+
+### Requirements
+
+- Python 3.9+
+- PyTorch (GPU support strongly recommended)
+
+### Quick Install
+
+Install the latest stable release from PyPI:
+
+```bash
+pip install spVIPES
+```
+
+For the development version:
+
+```bash
+pip install git+https://github.com/nrclaudio/spVIPES.git@main
+```
+
+### GPU Setup (Recommended)
+
+For optimal performance, ensure CUDA-compatible PyTorch is installed:
+
+```bash
+# Check GPU availability
+nvidia-smi
+
+# Install PyTorch with CUDA support (example for CUDA 11.3)
+pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
+
+# Verify GPU detection
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+```
+
+> See [PyTorch installation guide](https://pytorch.org/get-started/locally/) for version-specific instructions.
+
+## Quick Start
+
+### Basic Workflow
+
+```python
+import spVIPES
+import scanpy as sc
+
+# Load your multi-group dataset
+adata = sc.read_h5ad("integrated_data.h5ad")
+
+# Configure integration strategy
+spVIPES.model.setup_anndata(
+    adata,
+    groups_key="dataset",
+    label_key="cell_type"  # Optional: for supervised integration
+)
+
+# Initialize and train model
+model = spVIPES.model(adata)
+model.train(max_epochs=200)
+
+# Extract integrated representations
+latent = model.get_latent_representation()
+adata.obsm["X_spVIPES"] = latent
+```
+
+### Integration Strategies
+
+<details>
+<summary><b>📋 Label-based Integration</b></summary>
+
+Use when high-quality cell type annotations are available:
+
+```python
+spVIPES.model.setup_anndata(
+    adata,
+    groups_key="dataset", 
+    label_key="cell_type",
+    batch_key="batch"  # Optional batch correction
+)
+```
+</details>
+
+<details>
+<summary><b>🔄 Optimal Transport: Paired Cells</b></summary>
+
+For datasets with known cell-to-cell correspondences:
+
+```python
+# Assumes transport plan stored in adata.uns["transport_plan"]
+spVIPES.model.setup_anndata(
+    adata,
+    groups_key="dataset",
+    transport_plan_key="transport_plan",
+    match_clusters=False
+)
+```
+</details>
+
+<details>
+<summary><b>🧩 Optimal Transport: Cluster Matching</b></summary>
+
+For automatic cluster-based alignment:
+
+```python
+spVIPES.model.setup_anndata(
+    adata,
+    groups_key="dataset",
+    transport_plan_key="transport_plan", 
+    match_clusters=True  # Enables automated cluster matching
+)
+```
+</details>
+
+### Advanced Configuration
+
+```python
+# Custom model parameters
+model = spVIPES.model(
+    adata,
+    n_dimensions_shared=25,      # Shared latent dimensions
+    n_dimensions_private=10,     # Private latent dimensions  
+    n_hidden=128,                # Hidden layer size
+    dropout_rate=0.1             # Regularization
+)
+
+# Training with custom settings
+model.train(
+    max_epochs=300,
+    batch_size=512,
+    early_stopping=True,
+    check_val_every_n_epoch=10
+)
+```
+
+## Documentation & Tutorials
+
+📚 **Getting Started**
+- [Basic Tutorial](docs/notebooks/Tutorial.ipynb) — Complete walkthrough of spVIPES functionality
+- [API Documentation][link-api] — Comprehensive API reference  
+- [User Guide][link-docs] — Detailed documentation and examples
+
+## Support & Community
+
+💬 **Get Help**
+- [Issue Tracker][issue-tracker] — Report bugs and request features
+
+
+## Citation
+
+If you use spVIPES in your research, please cite:
+
+```bibtex
+@article{spVIPES2023,
+  title={Integrative learning of disentangled representations},
+  author={C. Novella-Rausell, D.J.M Peters and A. Mahfouz},
+  journal={bioRxiv},
+  year={2023},
+  doi={10.1101/2023.11.07.565957},
+  url={https://www.biorxiv.org/content/10.1101/2023.11.07.565957v1}
+}
+```
+
+**Paper**: [bioRxiv preprint](https://www.biorxiv.org/content/10.1101/2023.11.07.565957v1)
+
+---
+
+
+<!-- Badge references -->
 [badge-tests]: https://img.shields.io/github/actions/workflow/status/nrclaudio/spVIPES/test.yaml?branch=main
+[badge-python]: https://img.shields.io/pypi/pyversions/spVIPES
+[badge-pypi]: https://img.shields.io/pypi/v/spVIPES
+<!-- [badge-docs]: https://img.shields.io/readthedocs/spVIPES -->
+
 [link-tests]: https://github.com/nrclaudio/spVIPES/actions/workflows/test.yml
+[link-python]: https://pypi.org/project/spVIPES
+[link-pypi]: https://pypi.org/project/spVIPES
 
 [scverse-discourse]: https://discourse.scverse.org/
 [issue-tracker]: https://github.com/nrclaudio/spVIPES/issues
 [changelog]: https://spVIPES.readthedocs.io/latest/changelog.html
 [link-docs]: https://spVIPES.readthedocs.io
 [link-api]: https://spVIPES.readthedocs.io/latest/api.html
-
-<!-- [badge-docs]: https://img.shields.io/readthedocs/spVIPES -->
-
-Shared-private Variational Inference with Product of Experts and Supervision
-
-## Overview
-
-spVIPES is a method for integrating multi-group single-cell datasets using a shared-private latent space approach. The model learns both shared representations (common across groups) and private representations (group-specific) through a Product of Experts (PoE) framework.
-
-### Key Features
-
-- **Multi-modal integration**: Integrate datasets with different feature sets (e.g., different gene panels)
-- **Shared-private decomposition**: Learn both common and group-specific latent representations
-- **Multiple PoE variants**: Support for different data alignment strategies
-- **Batch correction**: Built-in batch effect correction capabilities
-- **GPU acceleration**: Optimized for CUDA-enabled training
-
-### Product of Experts Variants
-
-spVIPES supports three different PoE strategies for data integration:
-
-1. **Label-based PoE** 🎯
-   - Uses explicit cell type labels for alignment
-   - Ideal when ground truth cell type annotations are available
-   - Provides the most direct supervision signal
-
-2. **Optimal Transport (OT) - Paired PoE** 🔄
-   - Uses direct cell-to-cell transport plans from optimal transport algorithms
-   - Best for datasets with known cell correspondences
-   - Enables precise cell-level alignment
-
-3. **Optimal Transport (OT) - Cluster-based PoE** 🧩
-   - Combines transport plans with automated cluster matching
-   - Uses entropy-based resolution optimization for clustering
-   - Applies Hungarian algorithm for optimal cluster correspondence
-   - Ideal for datasets without direct cell correspondences but with similar cell type distributions
-
-The method automatically selects the appropriate PoE variant based on the provided inputs, with label-based PoE taking priority when both labels and transport plans are available.
-
-### When to Use Each Variant
-
-- **Use Label-based PoE** when you have reliable cell type annotations for both datasets
-- **Use Paired PoE** when you have computed cell-to-cell correspondences (e.g., from trajectory analysis or temporal data)
-- **Use Cluster-based PoE** when you have transport plans but no direct cell correspondences (most common OT scenario)
-
-
-## Getting started
-
-Please refer to the [documentation][link-docs]. In particular, the
-
--   [API documentation][link-api].
-
-## Installation
-
-You need to have Python 3.9 or newer installed on your system.
-
-### PyTorch installation
-
-We strongly recommend using spVIPES with GPU acceleration. In Linux, check your NVIDIA drivers running:
-
-```bash
-nvidia-smi
-```
-
-You can then install a compatible PyTorch version from https://pytorch.org/get-started/previous-versions/. For example if your CUDA drivers are version 11.3, you should install PyTorch v1.12.1 with the following command:
-
-```bash
-pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 torchaudio==0.12.1 --extra-index-url https://download.pytorch.org/whl/cu113
-```
-
-Make sure your torch installation can see your CUDA device to take full advantage of GPU acceleration by running:
-
-```python
-import torch
-
-torch.cuda.is_available()
-```
-
-This should return `True` if everything is installed correctly.
-
-### spVIPES installation
-
-To install spVIPES:
-
-1. Install the latest release of `spVIPES` from `PyPI <https://pypi.org/project/spVIPES/>`\_:
-
-```bash
-pip install spVIPES
-```
-
-2. Install the latest development version:
-
-```bash
-pip install git+https://github.com/nrclaudio/spVIPES.git@main
-```
-
-## Usage
-
-### Basic Integration with Labels
-
-```python
-import spVIPES
-
-# Setup with cell type labels
-spVIPES.model.setup_anndata(
-    adata, 
-    groups_key="dataset", 
-    label_key="cell_type"
-)
-
-# Train the model
-model = spVIPES.model(adata)
-model.train()
-```
-
-### Optimal Transport Integration
-
-#### Paired PoE (Direct Cell Correspondences)
-
-```python
-# For datasets with known cell-to-cell correspondences
-spVIPES.model.setup_anndata(
-    adata, 
-    groups_key="dataset", 
-    transport_plan_key="transport_matrix",
-    match_clusters=False  # Use direct cell pairing
-)
-```
-
-#### Cluster-based PoE (Automatic Cluster Matching)
-
-```python
-# For datasets without direct correspondences
-spVIPES.model.setup_anndata(
-    adata, 
-    groups_key="dataset", 
-    transport_plan_key="transport_matrix",
-    match_clusters=True  # Enable cluster-based matching
-)
-```
-
-The optimal transport variants are particularly useful when:
-- You have computed transport plans using external OT algorithms (e.g., from `scot`, `moscot`, or custom implementations)
-- You want to leverage cellular similarity information for integration
-- You need to integrate datasets with complex correspondence patterns
-
-## Tutorials
-
-To get started, please refer to the [basic spVIPES tutorial](docs/notebooks/Tutorial.ipynb).
-
-## Contact
-
-If you found a bug, please use the [issue tracker][issue-tracker].
-
-## Citation
-
-> t.b.a
 
