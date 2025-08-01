@@ -136,6 +136,9 @@ autodoc_mock_imports = [
     "scvi.data.fields",
     "scvi.utils",
     "scvi.module.base",
+    "scvi._types",
+    "scvi.dataloaders",
+    "scvi.dataloaders._anntorchdataset",
     "scanpy",
     "anndata",
     "mudata",
@@ -151,6 +154,7 @@ autodoc_mock_imports = [
     "numpyro",
     "optax",
     "flax",
+    "rich",
 ]
 
 # Enhanced autodoc configuration for detailed API documentation
