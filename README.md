@@ -9,7 +9,7 @@
 [![PyPI][badge-pypi]][link-pypi]
 [![Documentation][badge-docs]][link-docs]
 
-_A novel approach for integrating multi-group single-cell datasets through shared-private latent representations_
+
 
 </div>
 
