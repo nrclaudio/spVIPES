@@ -213,5 +213,5 @@ If you use spVIPES in your research, please cite:
 [scverse-discourse]: https://discourse.scverse.org/
 [issue-tracker]: https://github.com/nrclaudio/spVIPES/issues
 [changelog]: https://spVIPES.readthedocs.io/latest/changelog.html
-[link-docs]: https://spVIPES.readthedocs.io
-[link-api]: https://spVIPES.readthedocs.io/latest/api.html
+[link-docs]: https://spvipes.readthedocs.io/en/latest/
+[link-api]: https://spvipes.readthedocs.io/en/latest/api.html
