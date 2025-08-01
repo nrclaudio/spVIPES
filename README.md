@@ -172,7 +172,7 @@ model.train(
 
 -   [Basic Tutorial](docs/notebooks/Tutorial.ipynb) — Complete walkthrough of spVIPES functionality
 -   [API Documentation][link-api] — Comprehensive API reference
--   [User Guide][link-docs] — Detailed documentation and examples
+
 
 ## Support & Community
 
