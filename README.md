@@ -9,8 +9,6 @@
 [![PyPI][badge-pypi]][link-pypi]
 [![Documentation][badge-docs]][link-docs]
 
-
-
 </div>
 
 ---
