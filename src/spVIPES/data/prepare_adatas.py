@@ -15,7 +15,7 @@ def prepare_adatas(
     groups_obs_names = []
     groups_obs = {}
     groups_lengths = {}
-    groups_var_names = []  # we store for filtering out other groups' var_names later
+    groups_var_names = {}  # Changed to dictionary
     groups_mapping = {}
     if len(adatas) != 2:
         raise ValueError("Currently only 2 groups are supported")
@@ -31,9 +31,10 @@ def prepare_adatas(
             else:
                 cols_to_use = adata.obs.columns.difference(groups_obs[groups].columns)
                 groups_obs[groups] = groups_obs[groups].join(adata.obs[cols_to_use])
-            groups_var_names.append(adata.var_names)
+              # Store var_names for each group
             adata.obs["groups"] = groups
             adata.var_names = f"{groups}_" + adata.var_names
+            groups_var_names[groups] = adata.var_names
             groups_mapping[i] = groups
 
     multigroups_adata = ad.concat(adatas, join="outer", label="groups", index_unique="-")
@@ -48,5 +49,12 @@ def prepare_adatas(
     multigroups_adata.uns["groups_lengths"] = groups_lengths
     multigroups_adata.uns["groups_var_names"] = groups_var_names
     multigroups_adata.uns["groups_mapping"] = groups_mapping
+    
+    # Create indices column
+    indices = []
+    for group, group_indices in zip(adatas.keys(), multigroups_adata.uns["groups_obs_indices"]):
+        group_size = len(group_indices)
+        indices.extend(np.arange(group_size, dtype=np.int32))
+    multigroups_adata.obs["indices"] = indices
 
     return multigroups_adata
