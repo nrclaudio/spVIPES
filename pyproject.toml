@@ -4,7 +4,7 @@ requires = ["hatchling"]
 
 [project]
 name = "spVIPES"
-version = "0.2.0"
+version = "0.3.0"
 description = "Shared-private Variational Inference with Product of Experts and Supervision"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -19,7 +19,7 @@ urls.Documentation = "https://spVIPES.readthedocs.io/"
 urls.Source = "https://github.com/nrclaudio/spVIPES"
 urls.Home-page = "https://github.com/nrclaudio/spVIPES"
 dependencies = [
-    "anndata",
+    "anndata==0.10.8",
     # for debug logging (referenced from the issue template)
     "session-info",
     "scvi-tools==0.20.0",
