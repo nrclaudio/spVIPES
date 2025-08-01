@@ -165,11 +165,11 @@ def process_transport_plan(transport_plan, adata, groups_key):
 class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
     """
     Implementation of the spVIPES model.
-    
-    spVIPES (shared-private Variational Inference with Product of Experts and Supervision) 
-    is a method for integrating multi-group single-cell datasets using a shared-private 
-    latent space approach. The model learns both shared representations (common across 
-    groups) and private representations (group-specific) through a Product of Experts (PoE) 
+
+    spVIPES (shared-private Variational Inference with Product of Experts and Supervision)
+    is a method for integrating multi-group single-cell datasets using a shared-private
+    latent space approach. The model learns both shared representations (common across
+    groups) and private representations (group-specific) through a Product of Experts (PoE)
     framework.
 
     Parameters
@@ -179,10 +179,10 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
     n_hidden : int, default=128
         Number of nodes per hidden layer in the neural networks.
     n_dimensions_shared : int, default=25
-        Dimensionality of the shared latent space. This space captures features 
+        Dimensionality of the shared latent space. This space captures features
         common across all groups/datasets.
     n_dimensions_private : int, default=10
-        Dimensionality of the private latent spaces. Each group gets its own 
+        Dimensionality of the private latent spaces. Each group gets its own
         private latent space of this dimensionality.
     dropout_rate : float, default=0.1
         Dropout rate for neural networks to prevent overfitting.
@@ -192,16 +192,16 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
     Examples
     --------
     Basic usage with cell type labels:
-    
+
     >>> import spVIPES
     >>> adata = spVIPES.data.prepare_adatas({"dataset1": dataset1, "dataset2": dataset2})
     >>> spVIPES.model.spVIPES.setup_anndata(adata, groups_key="groups", label_key="cell_type")
     >>> model = spVIPES.model.spVIPES(adata)
     >>> model.train()
     >>> latents = model.get_latent_representation()
-    
+
     Usage with optimal transport:
-    
+
     >>> spVIPES.model.spVIPES.setup_anndata(adata, groups_key="groups", transport_plan_key="transport_plan")
     >>> model = spVIPES.model.spVIPES(adata)
     >>> model.train()
@@ -300,7 +300,7 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
 
         This method registers the AnnData object with the model, configuring the
         appropriate data fields and PoE strategy based on the provided parameters.
-        The method automatically determines whether to use label-based PoE, 
+        The method automatically determines whether to use label-based PoE,
         optimal transport PoE, or cluster-based PoE.
 
         Parameters
@@ -316,7 +316,7 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         transport_plan_key : str, optional
             Key in `adata.uns` containing the precomputed optimal transport plan.
             If provided, enables optimal transport PoE for data integration.
-        label_key : str, optional  
+        label_key : str, optional
             Key in `adata.obs` containing cell type labels. If provided, enables
             label-based PoE which uses supervised alignment based on cell types.
         batch_key : str, optional
@@ -341,15 +341,15 @@ class spVIPES(MultiGroupTrainingMixin, BaseModelClass):
         Examples
         --------
         Basic setup with groups only:
-        
+
         >>> spVIPES.model.spVIPES.setup_anndata(adata, groups_key="dataset")
-        
+
         Setup with cell type supervision:
-        
+
         >>> spVIPES.model.spVIPES.setup_anndata(adata, groups_key="dataset", label_key="cell_type")
-        
+
         Setup with optimal transport:
-        
+
         >>> spVIPES.model.spVIPES.setup_anndata(adata, groups_key="dataset", transport_plan_key="transport_matrix")
         """
         setup_method_args = cls._get_setup_method_args(**locals())

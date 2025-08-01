@@ -7,9 +7,10 @@
 [![Tests][badge-tests]][link-tests]
 [![Python][badge-python]][link-python]
 [![PyPI][badge-pypi]][link-pypi]
+
 <!-- [![Documentation][badge-docs]][link-docs] -->
 
-*A novel approach for integrating multi-group single-cell datasets through shared-private latent representations*
+_A novel approach for integrating multi-group single-cell datasets through shared-private latent representations_
 
 </div>
 
@@ -19,16 +20,15 @@
 
 spVIPES enables robust integration of multi-group single-cell datasets through a principled shared-private latent space decomposition. The method leverages a Product of Experts (PoE) framework to learn both shared biological signals common across datasets and private representations capturing group-specific variations.
 
-
 ### Integration Strategies
 
 spVIPES provides three complementary approaches for dataset alignment:
 
-| Method | Description | Best Use Case |
-|--------|-------------|---------------|
-| **Label-based PoE** | Uses cell type annotations for direct supervision | High-quality cell type labels available |
-| **OT Paired PoE** | Direct cell-to-cell correspondences via optimal transport | Known cellular correspondences (e.g., time series) |
-| **OT Cluster-based PoE** | Automated cluster matching with transport plans | Similar cell populations, no direct correspondences |
+| Method                   | Description                                               | Best Use Case                                       |
+| ------------------------ | --------------------------------------------------------- | --------------------------------------------------- |
+| **Label-based PoE**      | Uses cell type annotations for direct supervision         | High-quality cell type labels available             |
+| **OT Paired PoE**        | Direct cell-to-cell correspondences via optimal transport | Known cellular correspondences (e.g., time series)  |
+| **OT Cluster-based PoE** | Automated cluster matching with transport plans           | Similar cell populations, no direct correspondences |
 
 > **Note:** The method automatically selects the most appropriate strategy based on available annotations and transport information.
 
@@ -36,8 +36,8 @@ spVIPES provides three complementary approaches for dataset alignment:
 
 ### Requirements
 
-- Python 3.9+
-- PyTorch (GPU support strongly recommended)
+-   Python 3.9+
+-   PyTorch (GPU support strongly recommended)
 
 ### Quick Install
 
@@ -85,7 +85,7 @@ adata = sc.read_h5ad("data.h5ad")
 spVIPES.model.setup_anndata(
     adata,
     groups_key="dataset",
-    label_key="cell_type"  # Optional: for supervised integration
+    label_key="cell_type",  # Optional: for supervised integration
 )
 
 # Initialize and train model
@@ -107,11 +107,12 @@ Use when high-quality cell type annotations are available:
 ```python
 spVIPES.model.setup_anndata(
     adata,
-    groups_key="dataset", 
+    groups_key="dataset",
     label_key="cell_type",
-    batch_key="batch"  # Optional batch correction
+    batch_key="batch",  # Optional batch correction
 )
 ```
+
 </details>
 
 <details>
@@ -125,9 +126,10 @@ spVIPES.model.setup_anndata(
     adata,
     groups_key="dataset",
     transport_plan_key="transport_plan",
-    match_clusters=False
+    match_clusters=False,
 )
 ```
+
 </details>
 
 <details>
@@ -139,10 +141,11 @@ For automatic cluster-based alignment:
 spVIPES.model.setup_anndata(
     adata,
     groups_key="dataset",
-    transport_plan_key="transport_plan", 
-    match_clusters=True  # Enables automated cluster matching
+    transport_plan_key="transport_plan",
+    match_clusters=True,  # Enables automated cluster matching
 )
 ```
+
 </details>
 
 ### Advanced Configuration
@@ -151,33 +154,31 @@ spVIPES.model.setup_anndata(
 # Custom model parameters
 model = spVIPES.model(
     adata,
-    n_dimensions_shared=25,      # Shared latent dimensions
-    n_dimensions_private=10,     # Private latent dimensions  
-    n_hidden=128,                # Hidden layer size
-    dropout_rate=0.1             # Regularization
+    n_dimensions_shared=25,  # Shared latent dimensions
+    n_dimensions_private=10,  # Private latent dimensions
+    n_hidden=128,  # Hidden layer size
+    dropout_rate=0.1,  # Regularization
 )
 
 # Training with custom settings
 model.train(
-    max_epochs=300,
-    batch_size=512,
-    early_stopping=True,
-    check_val_every_n_epoch=10
+    max_epochs=300, batch_size=512, early_stopping=True, check_val_every_n_epoch=10
 )
 ```
 
 ## Documentation & Tutorials
 
 📚 **Getting Started**
-- [Basic Tutorial](docs/notebooks/Tutorial.ipynb) — Complete walkthrough of spVIPES functionality
-- [API Documentation][link-api] — Comprehensive API reference  
-- [User Guide][link-docs] — Detailed documentation and examples
+
+-   [Basic Tutorial](docs/notebooks/Tutorial.ipynb) — Complete walkthrough of spVIPES functionality
+-   [API Documentation][link-api] — Comprehensive API reference
+-   [User Guide][link-docs] — Detailed documentation and examples
 
 ## Support & Community
 
 💬 **Get Help**
-- [Issue Tracker][issue-tracker] — Report bugs and request features
 
+-   [Issue Tracker][issue-tracker] — Report bugs and request features
 
 ## Citation
 
@@ -198,20 +199,19 @@ If you use spVIPES in your research, please cite:
 
 ---
 
-
 <!-- Badge references -->
+
 [badge-tests]: https://img.shields.io/github/actions/workflow/status/nrclaudio/spVIPES/test.yaml?branch=main
 [badge-python]: https://img.shields.io/pypi/pyversions/spVIPES
 [badge-pypi]: https://img.shields.io/pypi/v/spVIPES
+
 <!-- [badge-docs]: https://img.shields.io/readthedocs/spVIPES -->
 
 [link-tests]: https://github.com/nrclaudio/spVIPES/actions/workflows/test.yml
 [link-python]: https://pypi.org/project/spVIPES
 [link-pypi]: https://pypi.org/project/spVIPES
-
 [scverse-discourse]: https://discourse.scverse.org/
 [issue-tracker]: https://github.com/nrclaudio/spVIPES/issues
 [changelog]: https://spVIPES.readthedocs.io/latest/changelog.html
 [link-docs]: https://spVIPES.readthedocs.io
 [link-api]: https://spVIPES.readthedocs.io/latest/api.html
-

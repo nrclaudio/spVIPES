@@ -13,7 +13,7 @@ from .utils import one_hot
 class Encoder(nn.Module):
     """
     Variational encoder network for spVIPES.
-    
+
     This encoder maps input gene expression data to latent representations using
     a variational approach. It outputs both mean and variance parameters for the
     latent distribution, enabling sampling during training and inference.
@@ -22,7 +22,7 @@ class Encoder(nn.Module):
     ----------
     n_input : int
         Number of input features (genes) in the expression data.
-    n_topics : int  
+    n_topics : int
         Number of output dimensions in the latent space (topics/factors).
     hidden : int, default=100
         Number of hidden units in the fully connected layers.
@@ -39,7 +39,7 @@ class Encoder(nn.Module):
     The encoder uses a two-layer fully connected architecture with ReLU activations
     and batch normalization on the output layers. It outputs parameters for a
     normal distribution in latent space, following the variational autoencoder framework.
-    
+
     The forward pass returns both the latent representation (theta) and intermediate
     statistics needed for the variational objective.
     """
@@ -99,9 +99,9 @@ class Encoder(nn.Module):
         -------
         dict
             Dictionary containing encoder outputs:
-            
+
             - **logtheta_loc** : torch.Tensor - Mean of latent distribution
-            - **logtheta_logvar** : torch.Tensor - Log variance of latent distribution  
+            - **logtheta_logvar** : torch.Tensor - Log variance of latent distribution
             - **logtheta_scale** : torch.Tensor - Standard deviation of latent distribution
             - **log_z** : torch.Tensor - Sampled latent variable (log space)
             - **theta** : torch.Tensor - Normalized latent representation (simplex)
@@ -143,7 +143,7 @@ class Encoder(nn.Module):
 class LinearDecoderSPVIPE(nn.Module):
     """
     Linear decoder for spVIPES with shared-private latent space decomposition.
-    
+
     This decoder takes separate shared and private latent representations and
     decodes them into gene expression parameters. It implements a mixture model
     that combines shared and private contributions to generate the final output
@@ -153,7 +153,7 @@ class LinearDecoderSPVIPE(nn.Module):
     ----------
     n_input_private : int
         Dimensionality of the private latent space input.
-    n_input_shared : int  
+    n_input_shared : int
         Dimensionality of the shared latent space input.
     n_output : int
         Number of output features (genes) to reconstruct.
@@ -173,11 +173,11 @@ class LinearDecoderSPVIPE(nn.Module):
     Notes
     -----
     The decoder consists of three main components:
-    
+
     1. **Private factor regressor**: Maps private latent space to gene-specific factors
-    2. **Shared factor regressor**: Maps shared latent space to gene-specific factors  
+    2. **Shared factor regressor**: Maps shared latent space to gene-specific factors
     3. **Mixing network**: Learns how to combine shared and private contributions
-    
+
     The output includes both separate private/shared reconstructions and a mixed
     reconstruction that combines both components according to learned mixing weights.
     """
@@ -284,9 +284,9 @@ class LinearDecoderSPVIPE(nn.Module):
         -------
         tuple
             Tuple of decoder outputs:
-            
+
             - **px_scale_private** : torch.Tensor - Normalized expression rates from private space
-            - **px_scale_shared** : torch.Tensor - Normalized expression rates from shared space  
+            - **px_scale_shared** : torch.Tensor - Normalized expression rates from shared space
             - **px_rate_private** : torch.Tensor - Library-scaled rates from private space
             - **px_rate_shared** : torch.Tensor - Library-scaled rates from shared space
             - **px_mixing** : torch.Tensor - Learned mixing weights (logits)

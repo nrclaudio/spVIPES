@@ -18,7 +18,7 @@ torch.backends.cudnn.benchmark = True
 class spVIPESmodule(BaseModuleClass):
     """
     PyTorch implementation of spVIPES variational autoencoder module.
-    
+
     This module implements the core variational autoencoder with Product of Experts (PoE)
     for shared-private latent space learning. It extends scVI's underlying VAE architecture
     with multi-group integration capabilities and support for different PoE strategies.
@@ -29,7 +29,7 @@ class spVIPESmodule(BaseModuleClass):
         List containing the number of features (genes) for each group/dataset.
     groups_obs_names : list
         List of observation names for each group.
-    groups_var_names : list 
+    groups_var_names : list
         List of variable (gene) names for each group.
     groups_obs_indices : list
         List of observation indices for each group.
@@ -107,7 +107,7 @@ class spVIPESmodule(BaseModuleClass):
         the provided inputs (transport_plan, use_labels, pair_data). The module creates
         separate encoders and decoders for each group while sharing the latent space
         structure for integration.
-        
+
         The dispersion parameter controls how the negative binomial distribution variance
         is modeled, with gene-level being the most common choice for single-cell data.
         """

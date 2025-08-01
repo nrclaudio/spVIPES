@@ -128,7 +128,7 @@ nitpick_ignore = [
 # Mock imports for autodoc when dependencies can't be imported
 autodoc_mock_imports = [
     "torch",
-    "torchmetrics", 
+    "torchmetrics",
     "pytorch_lightning",
     "scvi",
     "scvi.model.base",
@@ -155,18 +155,18 @@ autodoc_mock_imports = [
 
 # Enhanced autodoc configuration for detailed API documentation
 autodoc_default_options = {
-    'members': True,
-    'undoc-members': True,
-    'show-inheritance': True,
-    'inherited-members': True,
-    'special-members': '__init__',
-    'member-order': 'bysource',
-    'exclude-members': '__weakref__',
+    "members": True,
+    "undoc-members": True,
+    "show-inheritance": True,
+    "inherited-members": True,
+    "special-members": "__init__",
+    "member-order": "bysource",
+    "exclude-members": "__weakref__",
 }
 
 # More detailed autodoc behavior
 autodoc_class_signature = "separated"
-autodoc_member_order = 'bysource'
+autodoc_member_order = "bysource"
 autodoc_typehints = "description"
 autodoc_typehints_description_target = "documented"
 
@@ -178,7 +178,7 @@ napoleon_preprocess_types = True
 napoleon_type_aliases = None
 
 # Suppress import warnings but preserve other warnings
-suppress_warnings = ['autodoc.import_object']
+suppress_warnings = ["autodoc.import_object"]
 
 
 def setup(app):
