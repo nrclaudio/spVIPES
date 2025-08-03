@@ -4,7 +4,6 @@
 
 **Shared-private Variational Inference with Product of Experts and Supervision**
 
-[![Python][badge-python]][link-python]
 [![PyPI][badge-pypi]][link-pypi]
 [![Documentation][badge-docs]][link-docs]
 
