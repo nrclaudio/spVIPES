@@ -27,6 +27,8 @@ dependencies = [
     "scanpy>=1.9.1",
     "pandas>=1.5.0",
     "numpy>=1.21.0",
+    "jax",
+    "jaxlib",
 ]
 
 [project.optional-dependencies]
@@ -50,6 +52,8 @@ doc = [
 test = [
     "pytest",
     "pytest-cov",
+    "jax",
+    "jaxlib",
 ]
 
 [tool.hatch.build.targets.wheel]
