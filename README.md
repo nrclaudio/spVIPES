@@ -31,7 +31,7 @@ spVIPES provides three complementary approaches for dataset alignment:
 
 ### Requirements
 
--   Python 3.9+
+-   Python 3.9-3.10
 -   PyTorch (GPU support strongly recommended)
 
 ### Quick Install

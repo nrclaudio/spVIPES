@@ -7,7 +7,7 @@ name = "spVIPES"
 version = "0.3.0"
 description = "Shared-private Variational Inference with Product of Experts and Supervision"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.9,<3.11"
 license = {file = "LICENSE"}
 authors = [
     {name = "Claudio Novella Rausell"},
